@@ -1,0 +1,4 @@
+const EXPRESS_PORT = 3100;
+const WS_PORT = 3101;
+
+export { EXPRESS_PORT, WS_PORT };

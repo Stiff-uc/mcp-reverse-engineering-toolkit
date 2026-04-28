@@ -1,0 +1,7 @@
+# Node
+node_modules/
+.env
+*.log
+
+# Study artifacts — all research projects go here
+study/*

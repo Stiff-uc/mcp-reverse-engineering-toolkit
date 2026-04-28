@@ -1,0 +1,24 @@
+{
+  "name": "mcp-reverse-engineering-toolkit",
+  "version": "0.1.0",
+  "description": "Platform for reverse-engineering websites via AI agents (MCP Proxy + JS Agent)",
+  "type": "module",
+  "main": "src/mcp-proxy/index.js",
+  "scripts": {
+    "start": "node scripts/start.js",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "build:agent": "node scripts/build-agent.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/sdk": "^1.15.0",
+    "ws": "^8.18.2",
+    "express": "^5.1.0"
+  },
+  "devDependencies": {
+    "vitest": "^3.1.2"
+  }
+}
