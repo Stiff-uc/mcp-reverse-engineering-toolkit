@@ -46,7 +46,68 @@
 3. **Создать папку исследования** — `study/<project-name>/` (имя на основе URL: `study/example-com/` для `https://example.com`).
 4. **Начать сбор данных** через MCP-инструменты, следуя шагам 2.3.
 
-### 2.2. MCP-инструменты — детальное описание
+### 2.2. Мониторинг MCP Proxy через логирование
+
+MCP Proxy имеет встроенную систему логирования. Каждый вывод имеет формат:
+
+```
+[ISO-8601-timestamp] [level] [tag] message (optional JSON data)
+```
+
+**Уровни логирования:**
+| Уровень | Когда используется |
+|---------|-------------------|
+| `info` | Нормальные события: подключение клиентов, отправка/получение запросов, регистрация инструментов |
+| `debug` | Детальная диагностика: ping/pong keepalive, парсинг сообщений |
+| `warn` | Предупреждения: неизвестные request ID, валидация параметров |
+| `error` | Ошибки: таймауты, ошибки агента, разрывы соединений |
+
+**Теги (tags):**
+| Тег | Источник |
+|-----|---------|
+| `MCP-Proxy` | Главный процесс: запуск, MCP-запросы, shutdown |
+| `WS-Bridge` | WebSocket-слой: подключения, маршрутизация запросов, keepalive |
+| `Tool:read-dom` | Инструмент read-dom |
+| `Tool:execute-js` | Инструмент execute-js |
+| `Tool:get-context` | Инструмент get-context |
+| `Tool:update-agent` | Инструмент update-agent |
+
+**Примеры полезных логов для диагностики:**
+```
+# Запрос успешно отправлен и получен
+[info] [WS-Bridge] Sending GET_CONTEXT to agent {"timeout":30000,"params":{"keys":["url","title"]}}
+[info] [WS-Bridge] Response received for request 3e543c45... {"hasError":false,"hasResult":true}
+
+# Таймаут — JS-агент не ответил
+[error] [WS-Bridge] Request GET_CONTEXT timed out after 30000ms
+
+# JS-агент не подключен
+[error] [WS-Bridge] No JS Agent connected for READ_DOM
+
+# MCP-запрос от ИИ-агента
+[info] [MCP-Proxy] MCP request: POST /mcp
+[info] [MCP-Proxy] MCP request handled, response status: 200
+```
+
+**Важно:** Если MCP-инструмент возвращает ошибку таймаута, проверьте вывод терминала MCP Proxy — логи покажут, был ли запрос отправлен агенту, получил ли сервер ответ, и почему promise не разрешился.
+
+**Файл логов:** Все логи записываются в `logs/mcp-proxy.log`. Для просмотра последних строк используйте:
+```bash
+# Windows
+type logs\mcp-proxy.log
+# Linux/Mac/git-bash
+tail -20 logs/mcp-proxy.log
+```
+
+### 2.3. Переподключение MCP-инструмента после рестарта сервера
+
+После рестарта MCP Proxy (например, после изменений кода), MCP-сессия в VS Code становится невалидной и MCP-инструменты возвращают ошибку `"Server not initialized"` (HTTP 400). В этом случае:
+
+1. Переподключите MCP-инструмент в VS Code (перезапустите расширение или переоткройте workspace)
+2. Убедитесь, что JS-агент в браузере переподключился (проверьте `wsClients > 0` в health endpoint)
+3. Только после этого вызывайте MCP-инструменты
+
+### 2.4. MCP-инструменты — детальное описание
 
 #### read-dom (selector?, timeout?)
 Читает DOM страницы. Самый частый инструмент.
@@ -141,7 +202,7 @@ update-agent
 update-agent code="(function() { /* новый код агента */ })()"
 ```
 
-### 2.3. Типовой порядок исследования
+### 2.5. Типовой порядок исследования
 
 При исследовании нового сайта ИИ-агент должен следовать этому протоколу:
 
@@ -182,7 +243,7 @@ execute-js code="document.querySelector('button.submit').click()"
 **Шаг 6: Сохранять артефакты**
 Все найденные данные, снимки DOM, скрипты сохранять в `study/<project-name>/`.
 
-### 2.4. Правила работы с execute-js
+### 2.6. Правила работы с execute-js
 
 - **Код должен быть небольшим и целенаправленным** — не пишите большие скрипты, лучше несколько маленьких запросов
 - **Используйте самодостаточные IIFE** — оборачивайте сложный код в `(function() { ... })()`
@@ -190,7 +251,7 @@ execute-js code="document.querySelector('button.submit').click()"
 - **Если нужно изменить страницу** (например, убрать блокировку) — делайте это осознанно, сообщите пользователю
 - **Всегда предусматривайте ошибки** — проверяйте существование элементов перед доступом к ним
 
-### 2.5. Правила складирования артефактов
+### 2.7. Правила складирования артефактов
 
 Все артефакты исследования складываются в `study/<project-name>/`:
 
@@ -238,6 +299,14 @@ MCP-сервер с транспортом Streamable HTTP + встроенны�
 | `get-context` | Получить данные от JS-агента (URL, cookies, localStorage и т.д.) |
 | `update-agent` | Обновить код JS-агента (самообновление) или получить версию |
 
+**Система логирования:**
+- Все логи пишутся в консоль и в файл `logs/mcp-proxy.log`
+- Формат: `[timestamp] [level] [tag] message (optional JSON)`
+- Уровни: `info`, `debug`, `warn`, `error`
+- Теги: `MCP-Proxy`, `WS-Bridge`, `Tool:*`
+- Graceful shutdown и uncaught exceptions логируются перед завершением
+- Для просмотра: `type logs\mcp-proxy.log` (Windows) или `tail -f logs/mcp-proxy.log` (Linux/Mac)
+
 ### 3.2. JS Agent (`src/js-agent/`, собрано в `dist/js-agent-bundle.js`)
 
 Внедряемый в браузер скрипт. Подключается к MCP Proxy через WebSocket, выполняет команды.
@@ -270,6 +339,8 @@ mcp-reverse-engineering-toolkit/
 ├── SETUP.md                # Инструкция для пользователя (не-программиста)
 ├── package.json
 ├── .gitignore
+├── logs/                   # Логи MCP Proxy (.gitignore)
+│   └── mcp-proxy.log       # Текущий лог-файл
 ├── dist/
 │   └── js-agent-bundle.js  # Готовый JS-агент (копировать в консоль)
 ├── src/

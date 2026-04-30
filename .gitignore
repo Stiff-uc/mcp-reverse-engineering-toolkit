@@ -1,7 +1,9 @@
 # Node
 node_modules/
 .env
-*.log
+
+# Logs
+logs/
 
 # Study artifacts — all research projects go here
 study/*

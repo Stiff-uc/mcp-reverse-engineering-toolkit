@@ -1,6 +1,10 @@
 import { z } from 'zod';
+import { log } from '../config.js';
+
+const TAG = 'Tool:get-context';
 
 export function registerGetContext(mcp, wsServer) {
+  log('info', TAG, 'Registering get-context tool');
   mcp.registerTool(
     'get-context',
     {
@@ -10,7 +14,9 @@ export function registerGetContext(mcp, wsServer) {
       }),
     },
     async ({ keys }) => {
+      log('info', TAG, 'get-context called', { keys });
       if (keys && !Array.isArray(keys)) {
+        log('warn', TAG, 'Invalid keys parameter');
         return {
           content: [{ type: 'text', text: 'Error: keys must be an array of strings' }],
           isError: true,
@@ -19,6 +25,7 @@ export function registerGetContext(mcp, wsServer) {
       try {
         const response = await wsServer.sendToAgent('GET_CONTEXT', { keys: keys || [] });
         if (response.error) {
+          log('error', TAG, `Agent error: ${response.error.message}`);
           return {
             content: [{
               type: 'text',
@@ -27,10 +34,12 @@ export function registerGetContext(mcp, wsServer) {
             isError: true,
           };
         }
+        log('info', TAG, 'get-context completed successfully');
         return {
           content: [{ type: 'text', text: JSON.stringify(response.result, null, 2) }],
         };
       } catch (err) {
+        log('error', TAG, `Request failed: ${err.message}`);
         return {
           content: [{ type: 'text', text: `Error: ${err.message}` }],
           isError: true,
