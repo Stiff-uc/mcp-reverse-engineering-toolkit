@@ -4,16 +4,16 @@ function executeJs(code, timeoutMs) {
   return new Promise((resolve, reject) => {
     let timer = null;
 
-    if (timeoutMs && timeoutMs > 0) {
+    const timeoutPromise = new Promise((_, rejectTimeout) => {
       timer = setTimeout(() => {
-        reject(new Error(`Script execution timed out after ${timeoutMs}ms`));
-      }, timeoutMs);
-    }
+        rejectTimeout(new Error(`Script execution timed out after ${timeoutMs}ms`));
+      }, timeoutMs || Number.MAX_SAFE_INTEGER);
+    });
 
     try {
       const result = (0, eval)(code);
       if (result instanceof Promise) {
-        result
+        Promise.race([result, timeoutPromise])
           .then((val) => {
             clearTimeout(timer);
             resolve(val);
@@ -34,25 +34,21 @@ function executeJs(code, timeoutMs) {
 }
 
 // ---- self-update.js ----
-function selfUpdate(newCode) {
+function validateSelfUpdate(newCode) {
   if (!newCode || typeof newCode !== 'string') {
     throw new Error('No code provided for self-update');
   }
-
-  (0, eval)(newCode);
+  return true;
 }
 
 // ---- command-handler.js ----
-function createCommandHandler(agentVersion) {
+function createCommandHandler(agentVersion, onReload) {
   function handleReadDom(params) {
     const selector = params.selector || null;
     const timeout = params.timeout || 5000;
 
     return executeJs(`
       (function() {
-        const timeout = ${timeout};
-        const start = Date.now();
-
         function getDom(sel) {
           if (!sel) {
             return document.documentElement.outerHTML;
@@ -85,40 +81,43 @@ function createCommandHandler(agentVersion) {
         ctx.cookies = document.cookie;
         ctx.userAgent = navigator.userAgent;
 
+        try {
+          var ls = {};
+          for (var i = 0; i < localStorage.length; i++) {
+            var k = localStorage.key(i);
+            ls[k] = localStorage.getItem(k);
+          }
+          ctx.localStorage = ls;
+        } catch (e) {
+          ctx.localStorage = { error: e.message };
+        }
+
         var requestedKeys = ${JSON.stringify(keys)};
         if (requestedKeys.length === 0) {
-          requestedKeys = Object.keys(ctx);
+          return ctx;
         }
 
-        if (requestedKeys.indexOf('localStorage') !== -1) {
-          try {
-            var ls = {};
-            for (var i = 0; i < localStorage.length; i++) {
-              var k = localStorage.key(i);
-              ls[k] = localStorage.getItem(k);
-            }
-            ctx.localStorage = ls;
-          } catch (e) {
-            ctx.localStorage = { error: e.message };
+        var filtered = {};
+        for (var j = 0; j < requestedKeys.length; j++) {
+          var key = requestedKeys[j];
+          if (ctx.hasOwnProperty(key)) {
+            filtered[key] = ctx[key];
           }
         }
-
-        return ctx;
+        return filtered;
       })()
     `, 5000);
   }
 
   function handleUpdateAgent(params) {
-    return executeJs(`
-      (function() {
-        var newCode = ${JSON.stringify(params.code || '')};
-        if (!newCode) {
-          return { version: ${JSON.stringify(agentVersion)}, updated: false };
-        }
-        selfUpdate(newCode);
-        return { version: ${JSON.stringify(agentVersion)}, updated: true };
-      })()
-    `, 10000);
+    const newCode = params.code || '';
+    if (!newCode) {
+      return { version: agentVersion, updated: false };
+    }
+    if (onReload) {
+      onReload(newCode);
+    }
+    return { version: agentVersion, updated: true };
   }
 
   const handlers = {
@@ -152,12 +151,16 @@ function createConnection(url, onMessage) {
   }
 
   function connect() {
-    if (closed) return;
-    ws = new WebSocket(url);
+    if (closed) return Promise.resolve();
+    return new Promise((resolve) => {
+      console.log(`[JS-Agent] Connecting to ${url}...`);
+      ws = new WebSocket(url);
 
-    ws.onopen = () => {
-      reconnectAttempt = 0;
-    };
+      ws.onopen = () => {
+        reconnectAttempt = 0;
+        console.log('[JS-Agent] Connected');
+        resolve();
+      };
 
     ws.onmessage = (event) => {
       try {
@@ -169,17 +172,21 @@ function createConnection(url, onMessage) {
     };
 
     ws.onclose = () => {
+      console.warn('[JS-Agent] Connection closed');
       ws = null;
       if (!closed) {
         const delay = getReconnectDelay();
         reconnectAttempt++;
+        console.warn(`[JS-Agent] Reconnecting in ${delay}ms (attempt ${reconnectAttempt})`);
         reconnectTimer = setTimeout(() => connect(), delay);
       }
     };
 
-    ws.onerror = () => {
+    ws.onerror = (err) => {
+      console.error(`[JS-Agent] Connection error: ${err}`);
       ws?.close();
     };
+    });
   }
 
   function send(data) {
@@ -200,14 +207,33 @@ function createConnection(url, onMessage) {
     ws = null;
   }
 
-  return { connect, send, disconnect };
+  function reconnect() {
+    reconnectAttempt++;
+    if (reconnectTimer) clearTimeout(reconnectTimer);
+    ws?.close();
+    ws = null;
+  }
+
+  return { connect, send, disconnect, reconnect };
 }
 
 // ---- index.js ----
 const __agentVersion = '0.1.0';
 
 function createJsAgent(wsUrl) {
-  const commandHandler = createCommandHandler(__agentVersion);
+  const state = { commandHandler: null };
+
+  function onReloadCallback(newCode) {
+    try {
+      (0, eval)(newCode);
+    } catch (e) {
+      throw new Error('Self-update failed: ' + e.message);
+    }
+    state.commandHandler = createCommandHandler(__agentVersion, onReloadCallback);
+    connection.reconnect();
+  }
+
+  state.commandHandler = createCommandHandler(__agentVersion, onReloadCallback);
 
   const connection = createConnection(wsUrl, (msg) => {
     if (msg.type === 'ping') {
@@ -216,7 +242,7 @@ function createJsAgent(wsUrl) {
     }
 
     if (msg.type === 'request' && msg.id && msg.command) {
-      commandHandler.handle(msg.command, msg.params || {})
+      state.commandHandler.handle(msg.command, msg.params || {})
         .then((result) => {
           connection.send(JSON.stringify({
             type: 'response',
@@ -247,7 +273,8 @@ function createJsAgent(wsUrl) {
 
 // ---- self-executing ----
 var agent = createJsAgent("ws://localhost:3101");
-agent.start();
-console.log("[JS-Agent] Connected to MCP Proxy. Version: " + __agentVersion);
+agent.start().then(function() {
+  console.log("[JS-Agent] Connected to MCP Proxy. Version: " + __agentVersion);
+});
 window.__jsAgent = agent;
 })();

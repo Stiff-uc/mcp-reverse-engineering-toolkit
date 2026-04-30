@@ -2,16 +2,16 @@ export function executeJs(code, timeoutMs) {
   return new Promise((resolve, reject) => {
     let timer = null;
 
-    if (timeoutMs && timeoutMs > 0) {
+    const timeoutPromise = new Promise((_, rejectTimeout) => {
       timer = setTimeout(() => {
-        reject(new Error(`Script execution timed out after ${timeoutMs}ms`));
-      }, timeoutMs);
-    }
+        rejectTimeout(new Error(`Script execution timed out after ${timeoutMs}ms`));
+      }, timeoutMs || Number.MAX_SAFE_INTEGER);
+    });
 
     try {
       const result = (0, eval)(code);
       if (result instanceof Promise) {
-        result
+        Promise.race([result, timeoutPromise])
           .then((val) => {
             clearTimeout(timer);
             resolve(val);

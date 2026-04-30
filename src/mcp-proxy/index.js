@@ -43,12 +43,28 @@ export async function startMcpProxy() {
     });
   });
 
-  app.listen(EXPRESS_PORT, () => {
+  const server = app.listen(EXPRESS_PORT, () => {
     console.log(`MCP server listening on http://localhost:${EXPRESS_PORT}/mcp`);
     console.log(`Health check: http://localhost:${EXPRESS_PORT}/health`);
   });
 
-  return { wsServer, mcp, app };
+  function gracefulShutdown(signal) {
+    console.log(`\nReceived ${signal}. Shutting down gracefully...`);
+    wsServer.close();
+    server.close(() => {
+      console.log('Server closed');
+      process.exit(0);
+    });
+    setTimeout(() => {
+      console.error('Forced shutdown');
+      process.exit(1);
+    }, 5000);
+  }
+
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+
+  return { wsServer, mcp, app, server };
 }
 
 if (process.argv[1] && process.argv[1].endsWith('index.js')) {

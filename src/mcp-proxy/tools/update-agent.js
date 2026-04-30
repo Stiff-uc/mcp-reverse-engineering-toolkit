@@ -9,6 +9,12 @@ export function registerUpdateAgent(mcp, wsServer) {
       },
     },
     async ({ code }) => {
+      if (code !== undefined && typeof code !== 'string') {
+        return {
+          content: [{ type: 'text', text: 'Error: code must be a string' }],
+          isError: true,
+        };
+      }
       try {
         const response = await wsServer.sendToAgent('UPDATE_AGENT', { code: code || '' });
         if (response.error) {

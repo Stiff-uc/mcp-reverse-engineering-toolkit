@@ -22,7 +22,8 @@ export function createWebSocketServer(port) {
 
       if (msg.type === 'response' && msg.id) {
         const pending = pendingRequests.get(msg.id);
-        if (pending) {
+        if (pending && !pending.resolved) {
+          pending.resolved = true;
           pending.resolve(msg);
           pendingRequests.delete(msg.id);
         }
@@ -35,7 +36,7 @@ export function createWebSocketServer(port) {
     });
 
     ws.on('error', () => {
-      clients.delete(ws);
+      ws?.close();
     });
   });
 
@@ -60,11 +61,15 @@ export function createWebSocketServer(port) {
       }, timeout);
 
       pendingRequests.set(id, {
+        resolved: false,
         resolve: (result) => {
+          if (pendingRequests.get(id)?.resolved) return;
+          pendingRequests.get(id).resolved = true;
           clearTimeout(timer);
           resolve(result);
         },
         reject: (err) => {
+          if (pendingRequests.get(id)?.resolved) return;
           clearTimeout(timer);
           reject(err);
         },
@@ -93,9 +98,14 @@ export function createWebSocketServer(port) {
       pingInterval = null;
     }
     for (const [id, pending] of pendingRequests) {
-      pending.reject(new Error('Server shutting down'));
+      if (!pending.resolved) {
+        pending.reject(new Error('Server shutting down'));
+      }
     }
     pendingRequests.clear();
+    for (const client of clients) {
+      client.close();
+    }
     clients.clear();
     wss.close();
   }

@@ -67,8 +67,9 @@ function build() {
 
   bundle += '// ---- self-executing ----\n';
   bundle += 'var agent = createJsAgent("ws://localhost:3101");\n';
-  bundle += 'agent.start();\n';
-  bundle += 'console.log("[JS-Agent] Connected to MCP Proxy. Version: " + __agentVersion);\n';
+  bundle += 'agent.start().then(function() {\n';
+  bundle += '  console.log("[JS-Agent] Connected to MCP Proxy. Version: " + __agentVersion);\n';
+  bundle += '});\n';
   bundle += 'window.__jsAgent = agent;\n';
   bundle += '})();\n';
 

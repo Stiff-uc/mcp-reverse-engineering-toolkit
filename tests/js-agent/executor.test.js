@@ -30,8 +30,8 @@ describe('executor', () => {
     expect(result).toEqual([2, 4, 6]);
   });
 
-  it('should timeout on long execution', async () => {
-    await expect(executeJs('while(true){}', 100)).rejects.toThrow('timed out');
+  it('should timeout on long-running async operation', async () => {
+    await expect(executeJs('new Promise(r => setTimeout(r, 999999))', 100)).rejects.toThrow('timed out');
   });
 
   it('should handle async functions', async () => {
@@ -50,5 +50,9 @@ describe('executor', () => {
       expect(err.message).toBe('test error');
       expect(err.stack).toBeTruthy();
     }
+  });
+
+  it('should timeout on long-running async operation', async () => {
+    await expect(executeJs('new Promise(r => setTimeout(r, 999999))', 100)).rejects.toThrow('timed out');
   });
 });

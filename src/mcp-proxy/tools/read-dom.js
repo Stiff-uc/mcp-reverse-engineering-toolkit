@@ -7,10 +7,17 @@ export function registerReadDom(mcp, wsServer) {
         type: 'string',
         description: 'Optional CSS selector to filter elements',
       },
+      timeout: {
+        type: 'number',
+        description: 'Maximum time to wait for response in milliseconds',
+      },
     },
-    async ({ selector }) => {
+    async ({ selector, timeout }) => {
       try {
-        const response = await wsServer.sendToAgent('READ_DOM', { selector });
+        const response = await wsServer.sendToAgent('READ_DOM', {
+          selector,
+          timeout: timeout || 5000,
+        });
         if (response.error) {
           return {
             content: [{ type: 'text', text: `Error: ${response.error.message}\n${response.error.stack || ''}` }],

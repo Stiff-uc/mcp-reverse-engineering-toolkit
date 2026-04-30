@@ -1,16 +1,12 @@
 import { executeJs } from './executor.js';
-import { selfUpdate } from './self-update.js';
 
-export function createCommandHandler(agentVersion) {
+export function createCommandHandler(agentVersion, onReload) {
   function handleReadDom(params) {
     const selector = params.selector || null;
     const timeout = params.timeout || 5000;
 
     return executeJs(`
       (function() {
-        const timeout = ${timeout};
-        const start = Date.now();
-
         function getDom(sel) {
           if (!sel) {
             return document.documentElement.outerHTML;
@@ -43,40 +39,43 @@ export function createCommandHandler(agentVersion) {
         ctx.cookies = document.cookie;
         ctx.userAgent = navigator.userAgent;
 
+        try {
+          var ls = {};
+          for (var i = 0; i < localStorage.length; i++) {
+            var k = localStorage.key(i);
+            ls[k] = localStorage.getItem(k);
+          }
+          ctx.localStorage = ls;
+        } catch (e) {
+          ctx.localStorage = { error: e.message };
+        }
+
         var requestedKeys = ${JSON.stringify(keys)};
         if (requestedKeys.length === 0) {
-          requestedKeys = Object.keys(ctx);
+          return ctx;
         }
 
-        if (requestedKeys.indexOf('localStorage') !== -1) {
-          try {
-            var ls = {};
-            for (var i = 0; i < localStorage.length; i++) {
-              var k = localStorage.key(i);
-              ls[k] = localStorage.getItem(k);
-            }
-            ctx.localStorage = ls;
-          } catch (e) {
-            ctx.localStorage = { error: e.message };
+        var filtered = {};
+        for (var j = 0; j < requestedKeys.length; j++) {
+          var key = requestedKeys[j];
+          if (ctx.hasOwnProperty(key)) {
+            filtered[key] = ctx[key];
           }
         }
-
-        return ctx;
+        return filtered;
       })()
     `, 5000);
   }
 
   function handleUpdateAgent(params) {
-    return executeJs(`
-      (function() {
-        var newCode = ${JSON.stringify(params.code || '')};
-        if (!newCode) {
-          return { version: ${JSON.stringify(agentVersion)}, updated: false };
-        }
-        selfUpdate(newCode);
-        return { version: ${JSON.stringify(agentVersion)}, updated: true };
-      })()
-    `, 10000);
+    const newCode = params.code || '';
+    if (!newCode) {
+      return { version: agentVersion, updated: false };
+    }
+    if (onReload) {
+      onReload(newCode);
+    }
+    return { version: agentVersion, updated: true };
   }
 
   const handlers = {

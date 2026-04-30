@@ -4,7 +4,19 @@ import { createCommandHandler } from './command-handler.js';
 const AGENT_VERSION = '0.1.0';
 
 export function createJsAgent(wsUrl) {
-  const commandHandler = createCommandHandler(AGENT_VERSION);
+  const state = { commandHandler: null };
+
+  function onReloadCallback(newCode) {
+    try {
+      (0, eval)(newCode);
+    } catch (e) {
+      throw new Error('Self-update failed: ' + e.message);
+    }
+    state.commandHandler = createCommandHandler(AGENT_VERSION, onReloadCallback);
+    connection.reconnect();
+  }
+
+  state.commandHandler = createCommandHandler(AGENT_VERSION, onReloadCallback);
 
   const connection = createConnection(wsUrl, (msg) => {
     if (msg.type === 'ping') {
@@ -13,7 +25,7 @@ export function createJsAgent(wsUrl) {
     }
 
     if (msg.type === 'request' && msg.id && msg.command) {
-      commandHandler.handle(msg.command, msg.params || {})
+      state.commandHandler.handle(msg.command, msg.params || {})
         .then((result) => {
           connection.send(JSON.stringify({
             type: 'response',

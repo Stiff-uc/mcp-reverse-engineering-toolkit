@@ -5,3 +5,6 @@ node_modules/
 
 # Study artifacts — all research projects go here
 study/*
+
+# Built bundles
+dist/

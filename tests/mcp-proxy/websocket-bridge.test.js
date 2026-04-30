@@ -13,37 +13,29 @@ describe('websocket-bridge', () => {
     }
   });
 
-  it('should accept WebSocket connections', (done) => {
+  it('should accept WebSocket connections', async () => {
     const port = 11900 + Math.floor(Math.random() * 1000);
     const wsServer = createWebSocketServer(port);
     const ws = new WebSocket(`ws://localhost:${port}`);
-    ws.on('open', () => {
-      expect(wsServer.getConnectedCount()).toBe(1);
-      ws.close();
-      wsServer.close();
-      done();
-    });
+    await new Promise((resolve) => ws.on('open', resolve));
+    expect(wsServer.getConnectedCount()).toBe(1);
+    ws.close();
+    wsServer.close();
   });
 
-  it('should track connected clients', (done) => {
+  it('should track connected clients', async () => {
     const port = 11900 + Math.floor(Math.random() * 1000);
     const wsServer = createWebSocketServer(port);
     const ws1 = new WebSocket(`ws://localhost:${port}`);
     const ws2 = new WebSocket(`ws://localhost:${port}`);
-
-    let opened = 0;
-    const check = () => {
-      opened++;
-      if (opened === 2) {
-        expect(wsServer.getConnectedCount()).toBe(2);
-        ws1.close();
-        ws2.close();
-        wsServer.close();
-        done();
-      }
-    };
-    ws1.on('open', check);
-    ws2.on('open', check);
+    await Promise.all([
+      new Promise((resolve) => ws1.on('open', resolve)),
+      new Promise((resolve) => ws2.on('open', resolve)),
+    ]);
+    expect(wsServer.getConnectedCount()).toBe(2);
+    ws1.close();
+    ws2.close();
+    wsServer.close();
   });
 
   it('should send request and receive response from agent', (done) => {

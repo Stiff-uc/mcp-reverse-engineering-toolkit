@@ -1,9 +1,37 @@
 {
-  "worktrees": {},
-  "sessions": {},
+  "worktrees": {
+    "wt-1777405641732-1": {
+      "branch": "dust-step",
+      "path": "d:\\prog\\AI\\MCP_JS_Agent\\.kilo\\worktrees\\dust-step",
+      "parentBranch": "master",
+      "createdAt": "2026-04-28T19:47:21.732Z",
+      "label": "Initial design"
+    },
+    "wt-1777496572883-1": {
+      "branch": "pitch-frown",
+      "path": "d:\\prog\\AI\\MCP_JS_Agent\\.kilo\\worktrees\\pitch-frown",
+      "parentBranch": "master",
+      "createdAt": "2026-04-29T21:02:52.883Z",
+      "label": "NewTree"
+    }
+  },
+  "sessions": {
+    "ses_234c2f65effeRQrIB1kz8EXzyY": {
+      "worktreeId": "wt-1777405641732-1",
+      "createdAt": "2026-04-28T19:47:21.735Z"
+    },
+    "ses_224f2bb25ffebvUOc2D3tz4nIB": {
+      "worktreeId": "wt-1777496572883-1",
+      "createdAt": "2026-04-29T21:02:53.140Z"
+    }
+  },
   "tabOrder": {
     "local": [
       "pending:1"
     ]
-  }
+  },
+  "worktreeOrder": [
+    "wt-1777405641732-1",
+    "wt-1777496572883-1"
+  ]
 }

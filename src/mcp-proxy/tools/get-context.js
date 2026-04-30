@@ -10,6 +10,12 @@ export function registerGetContext(mcp, wsServer) {
       },
     },
     async ({ keys }) => {
+      if (keys && !Array.isArray(keys)) {
+        return {
+          content: [{ type: 'text', text: 'Error: keys must be an array of strings' }],
+          isError: true,
+        };
+      }
       try {
         const response = await wsServer.sendToAgent('GET_CONTEXT', { keys: keys || [] });
         if (response.error) {

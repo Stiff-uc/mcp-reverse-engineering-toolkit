@@ -7,10 +7,23 @@ export function registerExecuteJs(mcp, wsServer) {
         type: 'string',
         description: 'JavaScript code to execute',
       },
+      timeout: {
+        type: 'number',
+        description: 'Maximum execution time in milliseconds',
+      },
     },
-    async ({ code }) => {
+    async ({ code, timeout }) => {
+      if (typeof code !== 'string' || !code) {
+        return {
+          content: [{ type: 'text', text: 'Error: code parameter is required and must be a string' }],
+          isError: true,
+        };
+      }
       try {
-        const response = await wsServer.sendToAgent('EXECUTE_JS', { code });
+        const response = await wsServer.sendToAgent('EXECUTE_JS', {
+          code,
+          timeout: timeout || 10000,
+        });
         if (response.error) {
           return {
             content: [{

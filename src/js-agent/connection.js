@@ -10,12 +10,16 @@ export function createConnection(url, onMessage) {
   }
 
   function connect() {
-    if (closed) return;
-    ws = new WebSocket(url);
+    if (closed) return Promise.resolve();
+    return new Promise((resolve) => {
+      console.log(`[JS-Agent] Connecting to ${url}...`);
+      ws = new WebSocket(url);
 
-    ws.onopen = () => {
-      reconnectAttempt = 0;
-    };
+      ws.onopen = () => {
+        reconnectAttempt = 0;
+        console.log('[JS-Agent] Connected');
+        resolve();
+      };
 
     ws.onmessage = (event) => {
       try {
@@ -27,17 +31,21 @@ export function createConnection(url, onMessage) {
     };
 
     ws.onclose = () => {
+      console.warn('[JS-Agent] Connection closed');
       ws = null;
       if (!closed) {
         const delay = getReconnectDelay();
         reconnectAttempt++;
+        console.warn(`[JS-Agent] Reconnecting in ${delay}ms (attempt ${reconnectAttempt})`);
         reconnectTimer = setTimeout(() => connect(), delay);
       }
     };
 
-    ws.onerror = () => {
+    ws.onerror = (err) => {
+      console.error(`[JS-Agent] Connection error: ${err}`);
       ws?.close();
     };
+    });
   }
 
   function send(data) {
@@ -58,5 +66,12 @@ export function createConnection(url, onMessage) {
     ws = null;
   }
 
-  return { connect, send, disconnect };
+  function reconnect() {
+    reconnectAttempt++;
+    if (reconnectTimer) clearTimeout(reconnectTimer);
+    ws?.close();
+    ws = null;
+  }
+
+  return { connect, send, disconnect, reconnect };
 }
