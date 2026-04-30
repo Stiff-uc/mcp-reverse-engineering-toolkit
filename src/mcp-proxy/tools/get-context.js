@@ -1,13 +1,13 @@
+import { z } from 'zod';
+
 export function registerGetContext(mcp, wsServer) {
-  mcp.tool(
+  mcp.registerTool(
     'get-context',
-    'Get context data from the JS Agent (URL, cookies, localStorage, etc.)',
     {
-      keys: {
-        type: 'array',
-        items: { type: 'string' },
-        description: 'Optional list of context keys to retrieve',
-      },
+      description: 'Get context data from the JS Agent (URL, cookies, localStorage, etc.)',
+      inputSchema: z.object({
+        keys: z.array(z.string()).optional(),
+      }),
     },
     async ({ keys }) => {
       if (keys && !Array.isArray(keys)) {

@@ -1,12 +1,13 @@
+import { z } from 'zod';
+
 export function registerUpdateAgent(mcp, wsServer) {
-  mcp.tool(
+  mcp.registerTool(
     'update-agent',
-    'Update the JS Agent code or get its current version',
     {
-      code: {
-        type: 'string',
-        description: 'New JS Agent source code to push. If empty, returns current version',
-      },
+      description: 'Update the JS Agent code or get its current version',
+      inputSchema: z.object({
+        code: z.string().optional(),
+      }),
     },
     async ({ code }) => {
       if (code !== undefined && typeof code !== 'string') {

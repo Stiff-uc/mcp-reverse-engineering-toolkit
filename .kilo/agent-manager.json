@@ -13,6 +13,12 @@
       "parentBranch": "master",
       "createdAt": "2026-04-29T21:02:52.883Z",
       "label": "NewTree"
+    },
+    "wt-1777572758949-1": {
+      "branch": "hexagonal-monarch",
+      "path": "d:\\prog\\AI\\MCP_JS_Agent\\.kilo\\worktrees\\hexagonal-monarch",
+      "parentBranch": "master",
+      "createdAt": "2026-04-30T18:12:38.949Z"
     }
   },
   "sessions": {
@@ -23,6 +29,10 @@
     "ses_224f2bb25ffebvUOc2D3tz4nIB": {
       "worktreeId": "wt-1777496572883-1",
       "createdAt": "2026-04-29T21:02:53.140Z"
+    },
+    "ses_2206810c7ffe8cf5BlO25QjA65": {
+      "worktreeId": "wt-1777572758949-1",
+      "createdAt": "2026-04-30T18:12:49.594Z"
     }
   },
   "tabOrder": {
@@ -32,6 +42,7 @@
   },
   "worktreeOrder": [
     "wt-1777405641732-1",
-    "wt-1777496572883-1"
+    "wt-1777496572883-1",
+    "wt-1777572758949-1"
   ]
 }

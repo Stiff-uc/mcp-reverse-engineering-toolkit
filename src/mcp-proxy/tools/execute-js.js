@@ -1,16 +1,14 @@
+import { z } from 'zod';
+
 export function registerExecuteJs(mcp, wsServer) {
-  mcp.tool(
+  mcp.registerTool(
     'execute-js',
-    'Execute arbitrary JavaScript in the browser context and return the result',
     {
-      code: {
-        type: 'string',
-        description: 'JavaScript code to execute',
-      },
-      timeout: {
-        type: 'number',
-        description: 'Maximum execution time in milliseconds',
-      },
+      description: 'Execute arbitrary JavaScript in the browser context and return the result',
+      inputSchema: z.object({
+        code: z.string(),
+        timeout: z.number().optional(),
+      }),
     },
     async ({ code, timeout }) => {
       if (typeof code !== 'string' || !code) {

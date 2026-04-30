@@ -1,16 +1,14 @@
+import { z } from 'zod';
+
 export function registerReadDom(mcp, wsServer) {
-  mcp.tool(
+  mcp.registerTool(
     'read-dom',
-    'Read DOM from the web page, optionally filtered by CSS selector',
     {
-      selector: {
-        type: 'string',
-        description: 'Optional CSS selector to filter elements',
-      },
-      timeout: {
-        type: 'number',
-        description: 'Maximum time to wait for response in milliseconds',
-      },
+      description: 'Read DOM from the web page, optionally filtered by CSS selector',
+      inputSchema: z.object({
+        selector: z.string().optional(),
+        timeout: z.number().optional(),
+      }),
     },
     async ({ selector, timeout }) => {
       try {
