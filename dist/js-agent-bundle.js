@@ -109,13 +109,13 @@ function createCommandHandler(agentVersion, onReload) {
     `, 5000);
   }
 
-  function handleUpdateAgent(params) {
+  async function handleUpdateAgent(params) {
     const newCode = params.code || '';
     if (!newCode) {
       return { version: agentVersion, updated: false };
     }
     if (onReload) {
-      onReload(newCode);
+      await onReload(newCode);
     }
     return { version: agentVersion, updated: true };
   }
@@ -220,17 +220,36 @@ function createConnection(url, onMessage) {
 // ---- index.js ----
 const __agentVersion = '0.1.0';
 
-function createJsAgent(wsUrl) {
-  const state = { commandHandler: null };
+function createJsAgent(wsUrl, options = {}) {
+  const { isUpdate = false } = options;
+  const state = { commandHandler: null, wsUrl, isUpdate, connected: false };
 
   function onReloadCallback(newCode) {
-    try {
-      (0, eval)(newCode);
-    } catch (e) {
-      throw new Error('Self-update failed: ' + e.message);
-    }
-    state.commandHandler = createCommandHandler(__agentVersion, onReloadCallback);
-    connection.reconnect();
+    window.__jsAgentPrevious = window.__jsAgent;
+    return new Promise((resolve, reject) => {
+      try {
+        (0, eval)(newCode);
+      } catch (e) {
+        reject(new Error('Self-update failed: ' + e.message));
+        return;
+      }
+      // Wait for new agent to connect before disconnecting old
+      const checkNewAgent = setInterval(() => {
+        if (window.__jsAgent && window.__jsAgent.isReady) {
+          clearInterval(checkNewAgent);
+          console.log('[JS-Agent] New agent confirmed connected, decommissioning old agent');
+          connection.disconnect();
+          resolve();
+        }
+      }, 100);
+      // Fallback timeout — disconnect after 10s regardless
+      setTimeout(() => {
+        clearInterval(checkNewAgent);
+        console.warn('[JS-Agent] New agent connect timeout, forcing old agent disconnect');
+        connection.disconnect();
+        resolve();
+      }, 10000);
+    });
   }
 
   state.commandHandler = createCommandHandler(__agentVersion, onReloadCallback);
@@ -242,8 +261,16 @@ function createJsAgent(wsUrl) {
     }
 
     if (msg.type === 'request' && msg.id && msg.command) {
+      const startTime = performance.now();
+      const cmdId = msg.id.substring(0, 8);
+      console.log(`[JS-Agent] ▶ ${msg.command} #${cmdId}`);
+
       state.commandHandler.handle(msg.command, msg.params || {})
         .then((result) => {
+          const elapsed = (performance.now() - startTime).toFixed(1);
+          let summary = String(result);
+          if (summary.length > 120) summary = summary.substring(0, 120) + '...';
+          console.log(`[JS-Agent] ✓ ${msg.command} #${cmdId} (${elapsed}ms) → ${summary}`);
           connection.send(JSON.stringify({
             type: 'response',
             id: msg.id,
@@ -252,6 +279,8 @@ function createJsAgent(wsUrl) {
           }));
         })
         .catch((error) => {
+          const elapsed = (performance.now() - startTime).toFixed(1);
+          console.error(`[JS-Agent] ✗ ${msg.command} #${cmdId} (${elapsed}ms) → ${error.message || String(error)}`);
           connection.send(JSON.stringify({
             type: 'response',
             id: msg.id,
@@ -265,10 +294,23 @@ function createJsAgent(wsUrl) {
     }
   });
 
-  return {
+  const agent = {
     start: () => connection.connect(),
     getVersion: () => __agentVersion,
+    isReady: false,
   };
+
+  // Override start to set isReady flag on successful connect
+  const originalStart = agent.start;
+  agent.start = () => {
+    return originalStart().then(() => {
+      state.connected = true;
+      agent.isReady = true;
+      console.log(`[JS-Agent] Agent ready (version ${__agentVersion})`);
+    });
+  };
+
+  return agent;
 }
 
 // ---- self-executing ----

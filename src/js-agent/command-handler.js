@@ -67,13 +67,13 @@ export function createCommandHandler(agentVersion, onReload) {
     `, 5000);
   }
 
-  function handleUpdateAgent(params) {
+  async function handleUpdateAgent(params) {
     const newCode = params.code || '';
     if (!newCode) {
       return { version: agentVersion, updated: false };
     }
     if (onReload) {
-      onReload(newCode);
+      await onReload(newCode);
     }
     return { version: agentVersion, updated: true };
   }
