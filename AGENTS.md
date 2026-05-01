@@ -1,351 +1,95 @@
 # mcp-reverse-engineering-toolkit
 
-Платформа для реверс-инжиниринга веб-сайтов через ИИ-агентов. Состоит из двух компонентов:
+Platform for reverse-engineering websites through AI agents. Consists of two components:
 
-- **MCP Proxy** — Node.js приложение, выступающее MCP-сервером (Streamable HTTP) для ИИ-агента и WebSocket-сервером для JS-агента в браузере.
-- **JS Agent** — внедряемый в браузер скрипт, подключающийся к MCP Proxy через WebSocket и выполняющий команды ИИ-агента в рантайме веб-сайта.
-
----
-
-## 1. Режимы работы
-
-Проект имеет **два режима**, которые определяют, что ИИ-агент может и не может делать.
-
-### 1.1. Core Development (Разработка ядра)
-
-**Разрешено:** модифицировать файлы в `src/`, `tests/`, `scripts/`, корневые конфиги (package.json, AGENTS.md, .gitignore).
-
-**Цель:** разработка и доработка фреймворка (MCP Proxy + JS Agent).
-
-**Правила:**
-- Весь код в `src/` должен быть покрыт тестами в `tests/` (минимум 80%)
-- После изменений запускать `npm test`
-- После изменений в `src/js-agent/` пересобрать bundle: `npm run build:agent`
-- Следовать Code Style (раздел 3)
-
-### 1.2. Study Mode (Режим исследования)
-
-**Разрешено:** создавать и модифицировать файлы только внутри `study/<project-name>/`.
-
-**ЗАПРЕЩЕНО:**
-- Модифицировать любые файлы в `src/`, `tests/`, `scripts/`
-- Модифицировать корневые конфиги: `package.json`, `AGENTS.md`, `.gitignore`, `kilo.json`, файлы в `.kilo/`
-
-**Исключение:** если в процессе исследования обнаружена необходимость доработки ядра — это оформляется как отдельная задача на Core Development.
+- **MCP Proxy** — Node.js application acting as an MCP server (Streamable HTTP) for the AI agent and a WebSocket server for the JS agent in the browser.
+- **JS Agent** — Browser-injected script that connects to MCP Proxy via WebSocket and executes AI agent commands in the website runtime.
 
 ---
 
-## 2. Study Mode — полный workflow для ИИ-агента исследования
+## 1. Operating Modes
 
-### 2.1. Начало исследования
+The project has **two modes** that define what the AI agent can and cannot do.
 
-Когда пользователь просит исследовать веб-сайт, ИИ-агент должен:
+### 1.1. Core Development
 
-1. **Убедиться что MCP Proxy запущен** — выполнить `GET http://localhost:3100/health` (через webfetch или curl). Ожидаемый ответ: `{ "status": "ok", "wsClients": <number>, "version": "0.1.0" }`. Если сервер не отвечает — попросить пользователя открыть терминал, перейти в папку проекта и выполнить `npm start`.
-2. **Убедиться что JS-агент подключен** — проверить что `wsClients > 0` в ответе health. Если `wsClients === 0` — попросить пользователя открыть консоль браузера (F12) на целевом сайте, скопировать код из `dist/js-agent-bundle.js` и вставить в консоль.
-3. **Создать папку исследования** — `study/<project-name>/` (имя на основе URL: `study/example-com/` для `https://example.com`).
-4. **Начать сбор данных** через MCP-инструменты, следуя шагам 2.3.
+**Allowed:** Modify files in `src/`, `tests/`, `scripts/`, and root configs (`package.json`, `AGENTS.md`, `.gitignore`).
 
-### 2.2. Мониторинг MCP Proxy через логирование
+**Goal:** Develop and improve the framework (MCP Proxy + JS Agent).
 
-MCP Proxy имеет встроенную систему логирования. Каждый вывод имеет формат:
+**Rules:**
+- All code in `src/` must be covered by tests in `tests/` (minimum 80%)
+- Run `npm test` after changes
+- After changes in `src/js-agent/`, rebuild the bundle: `npm run build:agent`
+- Follow Code Style (Section 5)
 
-```
-[ISO-8601-timestamp] [level] [tag] message (optional JSON data)
-```
+### 1.2. Study Mode
 
-**Уровни логирования:**
-| Уровень | Когда используется |
-|---------|-------------------|
-| `info` | Нормальные события: подключение клиентов, отправка/получение запросов, регистрация инструментов |
-| `debug` | Детальная диагностика: ping/pong keepalive, парсинг сообщений |
-| `warn` | Предупреждения: неизвестные request ID, валидация параметров |
-| `error` | Ошибки: таймауты, ошибки агента, разрывы соединений |
+**Allowed:** Create and modify files only inside `study/<project-name>/`.
 
-**Теги (tags):**
-| Тег | Источник |
-|-----|---------|
-| `MCP-Proxy` | Главный процесс: запуск, MCP-запросы, shutdown |
-| `WS-Bridge` | WebSocket-слой: подключения, маршрутизация запросов, keepalive |
-| `Tool:read-dom` | Инструмент read-dom |
-| `Tool:execute-js` | Инструмент execute-js |
-| `Tool:get-context` | Инструмент get-context |
-| `Tool:update-agent` | Инструмент update-agent |
+**Forbidden:**
+- Modify any files in `src/`, `tests/`, `scripts/`
+- Modify root config files: `package.json`, `AGENTS.md`, `.gitignore`
 
-**Примеры полезных логов для диагностики:**
-```
-# Запрос успешно отправлен и получен
-[info] [WS-Bridge] Sending GET_CONTEXT to agent {"timeout":30000,"params":{"keys":["url","title"]}}
-[info] [WS-Bridge] Response received for request 3e543c45... {"hasError":false,"hasResult":true}
+**Exception:** If research reveals a need to improve the core framework, file it as a separate Core Development task.
 
-# Таймаут — JS-агент не ответил
-[error] [WS-Bridge] Request GET_CONTEXT timed out after 30000ms
-
-# JS-агент не подключен
-[error] [WS-Bridge] No JS Agent connected for READ_DOM
-
-# MCP-запрос от ИИ-агента
-[info] [MCP-Proxy] MCP request: POST /mcp
-[info] [MCP-Proxy] MCP request handled, response status: 200
-```
-
-**Важно:** Если MCP-инструмент возвращает ошибку таймаута, проверьте вывод терминала MCP Proxy — логи покажут, был ли запрос отправлен агенту, получил ли сервер ответ, и почему promise не разрешился.
-
-**Файл логов:** Все логи записываются в `logs/mcp-proxy.log`. Для просмотра последних строк используйте:
-```bash
-# Windows
-type logs\mcp-proxy.log
-# Linux/Mac/git-bash
-tail -20 logs/mcp-proxy.log
-```
-
-### 2.3. Переподключение MCP-инструмента после рестарта сервера
-
-После рестарта MCP Proxy (например, после изменений кода), MCP-сессия в VS Code становится невалидной и MCP-инструменты возвращают ошибку `"Server not initialized"` (HTTP 400). В этом случае:
-
-1. Переподключите MCP-инструмент в VS Code (перезапустите расширение или переоткройте workspace)
-2. Убедитесь, что JS-агент в браузере переподключился (проверьте `wsClients > 0` в health endpoint)
-3. Только после этого вызывайте MCP-инструменты
-
-### 2.4. MCP-инструменты — детальное описание
-
-#### read-dom (selector?, timeout?)
-Читает DOM страницы. Самый частый инструмент.
-
-| Параметр | Тип | Обязательный | По умолчанию | Описание |
-|----------|-----|:---:|:---:|----------|
-| selector | string | нет | весь документ | CSS-селектор для фильтрации элементов |
-| timeout | number | нет | 5000 | Максимальное время ожидания (мс) |
-
-**Примеры запросов (как их делает ИИ-агент):**
-
-```
-// Прочитать весь DOM
-read-dom
-
-// Прочитать конкретный элемент
-read-dom selector="#main-content"
-
-// Прочитать список
-read-dom selector="div.product-card"
-```
-
-**Возвращает:** HTML-строку выбранных элементов.
-
-**Важно:** DOM может быть очень большим. Начинайте с селекторов для конкретных частей страницы, не читайте весь DOM без необходимости.
-
-#### execute-js (code: string)
-Выполняет произвольный JavaScript код в контексте страницы.
-
-| Параметр | Тип | Обязательный | Описание |
-|----------|-----|:---:|----------|
-| code | string | да | JavaScript код для выполнения |
-
-**Примеры запросов:**
-
-```
-// Проверить глобальные переменные
-execute-js code="Object.keys(window).filter(k => k.startsWith('__'))"
-
-// Получить данные из React-компонента
-execute-js code="document.querySelector('#root').__reactFiber$*"
-
-// Изменить что-то на странице
-execute-js code="document.querySelector('.paywall').remove()"
-
-// Прочитать fetch-ответы
-execute-js code="performance.getEntriesByType('resource').map(e => e.name)"
-```
-
-**Возвращает:** JSON-представление результата выполнения. Если код вернул undefined — вернется null. Ошибки возвращаются с полным stack trace.
-
-**Обработка ошибок:** Любые ошибки JS (синтаксические, runtime, таймаут) возвращаются с сообщением и stack trace. ИИ-агент должен анализировать ошибки и корректировать код.
-
-#### get-context (keys?)
-Получает контекстные данные о странице от JS-агента.
-
-| Параметр | Тип | Обязательный | По умолчанию | Описание |
-|----------|-----|:---:|:---:|----------|
-| keys | string[] | нет | все ключи | Фильтр запрашиваемых данных |
-
-**Доступные ключи:**
-- `url` — текущий URL страницы
-- `title` — заголовок страницы
-- `cookies` — cookies страницы
-- `userAgent` — User-Agent браузера
-- `localStorage` — содержимое localStorage
-
-**Примеры запросов:**
-
-```
-// Получить всё
-get-context
-
-// Получить только URL и cookies
-get-context keys=["url", "cookies"]
-```
-
-#### update-agent (code?)
-Обновляет код JS-агента (самообновление) или возвращает версию.
-
-| Параметр | Тип | Обязательный | Описание |
-|----------|-----|:---:|----------|
-| code | string | нет | Новый код JS-агента |
-
-**Примеры запросов:**
-
-```
-// Проверить версию
-update-agent
-
-// Обновить агента (code — полный новый bundle)
-update-agent code="(function() { /* новый код агента */ })()"
-```
-
-### 2.5. Типовой порядок исследования
-
-При исследовании нового сайта ИИ-агент должен следовать этому протоколу:
-
-**Шаг 1: Получить контекст**
-```
-get-context
-```
-Узнать URL, заголовок, User-Agent.
-
-**Шаг 2: Изучить структуру страницы**
-```
-read-dom selector="head"
-read-dom selector="body"
-```
-Начать с общей структуры, затем углубляться селекторами.
-
-**Шаг 3: Исследовать ключевые компоненты**
-```
-read-dom selector=".main-content, #app, [data-page]"
-```
-Использовать execute-js для поиска интересных элементов:
-```
-execute-js code="document.querySelectorAll('[class*=\"price\"], [class*=\"product\"], [data-testid]').length"
-```
-
-**Шаг 4: Анализировать JS-окружение**
-```
-execute-js code="Object.keys(window).filter(k => typeof window[k] === 'function' && k[0] !== k[0]?.toLowerCase())"
-```
-Проверять глобальные переменные, фреймворки (React, Vue, Angular), API-эндпоинты.
-
-**Шаг 5: Взаимодействовать со страницей**
-```
-execute-js code="document.querySelector('button.submit').click()"
-```
-После действий — повторно читать DOM чтобы увидеть изменения.
-
-**Шаг 6: Сохранять артефакты**
-Все найденные данные, снимки DOM, скрипты сохранять в `study/<project-name>/`.
-
-### 2.6. Правила работы с execute-js
-
-- **Код должен быть небольшим и целенаправленным** — не пишите большие скрипты, лучше несколько маленьких запросов
-- **Используйте самодостаточные IIFE** — оборачивайте сложный код в `(function() { ... })()`
-- **Не мутируйте страницу без необходимости** — если нужно только прочитать данные, не меняйте DOM
-- **Если нужно изменить страницу** (например, убрать блокировку) — делайте это осознанно, сообщите пользователю
-- **Всегда предусматривайте ошибки** — проверяйте существование элементов перед доступом к ним
-
-### 2.6.1. Техника "Останови и попроси"
-
-Когда исследование требует пользовательского действия на сайте (отправка формы, клик по кнопке, ввод текста, загрузка файла) — **ИИ-агент НЕ должен выполнять это через execute-js**. Вместо этого:
-
-1. **Остановите автоматическое выполнение** — не пытайтесь эмулировать действия пользователя через JS.
-2. **Поставьте interceptor** (если нужно перехватить данные) — установите fetch-interceptor или mutation-observer через execute-js.
-3. **Попросите пользователя выполнить действие** — используйте `ask_followup_question` с чёткой формулировкой.
-4. **После действия пользователя** — прочитайте перехваченные данные через execute-js.
-
-**Пример workflow:**
-```
-// Шаг 1: Установить перехватчик
-execute-js code="(function() { const calls = []; const orig = window.fetch; window.fetch = function(...a) { calls.push(a); return orig.apply(this, a); }; window.__getCalls = () => calls; })()"
-
-// Шаг 2: Остановиться и попросить пользователя
-ask_followup_question "Пожалуйста, отправьте тестовое сообщение в чат"
-
-// Шаг 3: После действия пользователя — прочитать перехваченные данные
-execute-js code="window.__getCalls()"
-```
-
-**Почему это важно:**
-- Эмуляция кликов через JS может не сработать (SPA-фреймворки, event delegation)
-- Пользователь может добавить контекст (выбрать модель, прикрепить файл)
-- Перехват реальных запросов даёт точную структуру API
-
-### 2.7. Правила складирования артефактов
-
-Все артефакты исследования складываются в `study/<project-name>/`:
-
-```
-study/<project-name>/
-├── README.md              # Описание исследования
-├── dom-snapshots/         # Снимки DOM в разные моменты
-│   ├── 01-initial.html
-│   └── 02-after-click.html
-├── scripts/               # Полезные скрипты для сайта
-│   └── extract-data.js
-├── notes/                 # Заметки и наблюдения
-│   └── api-endpoints.md
-└── results/               # Итоговые результаты
-    └── extracted-data.json
-```
+**Full Study Mode workflow, MCP tools description, research techniques, and best practices are documented in [research-technics.md](research-technics.md).**
 
 ---
 
-## 3. Архитектура
+## 2. Architecture
 
+```mermaid
+graph LR
+    subgraph AI_Agent["AI Agent<br/>(VS Code + Kilo)"]
+    end
+
+    subgraph MCP_Proxy["MCP Proxy<br/>(Node.js)"]
+        MCP_Server["MCP server"]
+        WS_Server["WS server"]
+    end
+
+    subgraph JS_Agent["JS Agent<br/>(in browser)"]
+    end
+
+    AI_Agent <-->|"Streamable HTTP"| MCP_Proxy
+    MCP_Proxy -->|"WebSocket"| JS_Agent
 ```
-┌─────────────────┐     Streamable HTTP      ┌─────────────────────┐
-│   ИИ-агент       │ ◄──────────────────────► │   MCP Proxy         │
-│  (VS Code + Kilo)│                          │  (Node.js)          │
-└─────────────────┘                           │  - MCP server       │
-                                              │  - WS server        │
-                                              └───────┬─────────────┘
-                                                      │ WebSocket
-                                              ┌───────▼─────────────┐
-                                              │   JS Agent          │
-                                              │  (в браузере)       │
-                                              └─────────────────────┘
-```
 
-### 3.1. MCP Proxy (`src/mcp-proxy/`)
+### 2.1. MCP Proxy (`src/mcp-proxy/`)
 
-MCP-сервер с транспортом Streamable HTTP + встроенный WebSocket-сервер.
+MCP server with Streamable HTTP transport + built-in WebSocket server.
 
-**Инструменты MCP:**
-| Инструмент | Описание |
-|-----------|----------|
-| `read-dom` | Прочитать DOM страницы (с опциональным CSS-селектором) |
-| `execute-js` | Выполнить произвольный JS в контексте страницы |
-| `get-context` | Получить данные от JS-агента (URL, cookies, localStorage и т.д.) |
-| `update-agent` | Обновить код JS-агента (самообновление) или получить версию |
+**MCP Tools:**
 
-**Система логирования:**
-- Все логи пишутся в консоль и в файл `logs/mcp-proxy.log`
-- Формат: `[timestamp] [level] [tag] message (optional JSON)`
-- Уровни: `info`, `debug`, `warn`, `error`
-- Теги: `MCP-Proxy`, `WS-Bridge`, `Tool:*`
-- Graceful shutdown и uncaught exceptions логируются перед завершением
-- Для просмотра: `type logs\mcp-proxy.log` (Windows) или `tail -f logs/mcp-proxy.log` (Linux/Mac)
+| Tool | Description |
+|------|-------------|
+| `read-dom` | Read page DOM (with optional CSS selector) |
+| `execute-js` | Execute arbitrary JS in page context |
+| `get-context` | Get data from JS agent (URL, cookies, localStorage, etc.) |
+| `update-agent` | Update JS agent code (self-update) or get version |
 
-### 3.2. JS Agent (`src/js-agent/`, собрано в `dist/js-agent-bundle.js`)
+**Logging system:**
+- All logs are written to console and to `logs/mcp-proxy.log`
+- Format: `[timestamp] [level] [tag] message (optional JSON)`
+- Levels: `info`, `debug`, `warn`, `error`
+- Tags: `MCP-Proxy`, `WS-Bridge`, `Tool:*`
+- Graceful shutdown and uncaught exceptions are logged before termination
+- To view: `type logs\mcp-proxy.log` (Windows) or `tail -f logs/mcp-proxy.log` (Linux/Mac)
 
-Внедряемый в браузер скрипт. Подключается к MCP Proxy через WebSocket, выполняет команды.
+### 2.2. JS Agent (`src/js-agent/`, built to `dist/js-agent-bundle.js`)
 
-**Возможности:**
-- Подключение / переподключение с exponential backoff (1s → 2s → 4s → ... → 60s)
-- Безопасное выполнение JS (try/catch + stack trace + таймауты)
-- Самообновление через команду UPDATE_AGENT
-- Keepalive (ping/pong каждые 30s)
+Browser-injected script. Connects to MCP Proxy via WebSocket and executes commands.
 
-### 3.3. Wire Protocol
+**Capabilities:**
+- Connect / reconnect with exponential backoff (1s -> 2s -> 4s -> ... -> 60s)
+- Safe JS execution (try/catch + stack trace + timeouts)
+- Self-update via UPDATE_AGENT command
+- Keepalive (ping/pong every 30s)
 
-Сообщения передаются как JSON-строки через WebSocket.
+### 2.3. Wire Protocol
+
+Messages are transmitted as JSON strings over WebSocket.
 
 ```json
 { "type": "request", "id": "uuid", "command": "READ_DOM", "params": { "selector": "body" } }
@@ -357,18 +101,19 @@ MCP-сервер с транспортом Streamable HTTP + встроенны�
 
 ---
 
-## 4. Структура проекта
+## 3. Project Structure
 
 ```
 mcp-reverse-engineering-toolkit/
-├── AGENTS.md               # Правила для ИИ-агента
-├── SETUP.md                # Инструкция для пользователя (не-программиста)
+├── AGENTS.md               # Rules for AI agent
+├── research-technics.md    # Study Mode workflow and research techniques
+├── SETUP.md                # User instructions (non-developer)
 ├── package.json
 ├── .gitignore
-├── logs/                   # Логи MCP Proxy (.gitignore)
-│   └── mcp-proxy.log       # Текущий лог-файл
+├── logs/                   # MCP Proxy logs (.gitignore)
+│   └── mcp-proxy.log       # Current log file
 ├── dist/
-│   └── js-agent-bundle.js  # Готовый JS-агент (копировать в консоль)
+│   └── js-agent-bundle.js  # Built JS agent (copy to console)
 ├── src/
 │   ├── mcp-proxy/          # MCP Proxy (Node.js)
 │   │   ├── index.js
@@ -379,7 +124,7 @@ mcp-reverse-engineering-toolkit/
 │   │       ├── execute-js.js
 │   │       ├── get-context.js
 │   │       └── update-agent.js
-│   └── js-agent/           # JS Agent исходники (ES modules)
+│   └── js-agent/           # JS Agent sources (ES modules)
 │       ├── index.js
 │       ├── connection.js
 │       ├── command-handler.js
@@ -392,69 +137,75 @@ mcp-reverse-engineering-toolkit/
 │       ├── executor.test.js
 │       └── command-handler.test.js
 ├── scripts/
-│   ├── start.js            # Запуск MCP Proxy
-│   └── build-agent.js      # Сборка JS-агента в bundle
-└── study/                  # Артефакты исследований (.gitignore)
+│   ├── start.js            # Start MCP Proxy
+│   └── build-agent.js      # Build JS agent bundle
+└── study/                  # Research artifacts (.gitignore)
     └── .gitkeep
 ```
 
 ---
 
-## 5. Code Style
+## 4. Code Style
 
-- **Язык:** JavaScript (ES modules), без TypeScript
-- **Импорты:** ES modules (`import`/`export`), без CommonJS (`require`)
-- **Отступы:** 2 пробела
-- **Асинхронность:** async/await, без callback-стиля
-- **Обработка ошибок:** try/catch на всех границах (сеть, eval, IO)
-- **Комментарии:** НЕ писать комментарии в коде. Код должен быть самодокументируемым
-- **Наименования:**
-  - Файлы: lowerCamelCase.js (кроме точек входа index.js)
-  - Директории: kebab-case
-  - Функции: lowerCamelCase
-  - Константы: UPPER_SNAKE_CASE
-  - Классы: UpperCamelCase
-- **Длина строки:** не более 100 символов
-- **Строгий режим:** "use strict" (автоматически через ESM)
+- **Language:** JavaScript (ES modules), no TypeScript
+- **Imports:** ES modules (`import`/`export`), no CommonJS (`require`)
+- **Indentation:** 2 spaces
+- **Asynchrony:** async/await, no callback style
+- **Error handling:** try/catch at all boundaries (network, eval, IO)
+- **Comments:** Do NOT write comments in code. Code should be self-documenting.
+- **Naming:**
+  - Files: lowerCamelCase.js (except entry points index.js)
+  - Directories: kebab-case
+  - Functions: lowerCamelCase
+  - Constants: UPPER_SNAKE_CASE
+  - Classes: UpperCamelCase
+- **Line length:** No more than 100 characters
+- **Strict mode:** "use strict" (automatic via ESM)
 
 ---
 
-## 6. Тестирование
+## 5. Testing
 
-- **Фреймворк:** Vitest
-- **Структура:** `tests/<module>/<file>.test.js` — зеркалит `src/<module>/<file>.js`
-- **Покрытие:** минимум 80% для ядра (`src/`)
-- **Запуск:** `npm test`
+- **Framework:** Vitest
+- **Structure:** `tests/<module>/<file>.test.js` mirrors `src/<module>/<file>.js`
+- **Coverage:** Minimum 80% for core (`src/`)
+- **Run:** `npm test`
 - **Watch mode:** `npm run test:watch`
 
 ---
 
-## 7. Безопасность
+## 6. Security
 
-- `.gitignore` включает `study/*` — артефакты исследований не попадают в репозиторий
-- `.env` в `.gitignore` — никаких secrets в коде
-- JS-агент выполняется в браузере пользователя — нет доступа к файловой системе
-- Выполнение произвольного JS в executor.js всегда обернуто в try/catch
-- WebSocket соединения ограничены localhost по умолчанию
+- `.gitignore` includes `study/*` — research artifacts do not enter the repository
+- `.env` in `.gitignore` — no secrets in code
+- JS agent runs in the user's browser — no file system access
+- Arbitrary JS execution in executor.js is always wrapped in try/catch
+- WebSocket connections are limited to localhost by default
 
 ---
 
-## 8. Зависимости
+## 7. Dependencies
 
 **Runtime:**
-- `@modelcontextprotocol/sdk` — MCP сервер
-- `ws` — WebSocket сервер + клиент
-- `express` — HTTP сервер для Streamable HTTP транспорта
+- `@modelcontextprotocol/sdk` — MCP server
+- `ws` — WebSocket server + client
+- `express` — HTTP server for Streamable HTTP transport
 
 **Dev:**
-- `vitest` — тестирование
+- `vitest` — testing
 
 ---
 
-## 9. Скрипты
+## 8. Scripts
 
 ```bash
-npm start              # Запуск MCP Proxy (порт 3100)
-npm test               # Запуск тестов
-npm run build:agent    # Сборка JS-агента в dist/js-agent-bundle.js
+npm start              # Start MCP Proxy (port 3100)
+npm test               # Run tests
+npm run build:agent    # Build JS agent to dist/js-agent-bundle.js
 ```
+
+---
+
+## 9. Research Documentation
+
+For detailed research skills, MCP tools usage, Study Mode workflow, and best practices, see [research-technics.md](research-technics.md).

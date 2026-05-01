@@ -1,8 +1,23 @@
+/**
+ * Get Context Tool
+ *
+ * MCP tool that retrieves browser context data from the JS Agent, including:
+ * current URL, page title, cookies, user agent, and localStorage contents.
+ * Supports an optional keys array to filter which context fields are returned.
+ */
+
 import { z } from 'zod';
 import { log, MAX_RESPONSE_SIZE } from '../config.js';
 
+// Logging tag for get-context tool entries
 const TAG = 'Tool:get-context';
 
+/**
+ * Register the 'get-context' tool with the MCP server.
+ *
+ * @param {McpServer} mcp - The MCP server instance
+ * @param {Object} wsServer - WebSocket bridge for communicating with JS Agent
+ */
 export function registerGetContext(mcp, wsServer) {
   log('info', TAG, 'Registering get-context tool');
   mcp.registerTool(
@@ -13,8 +28,11 @@ export function registerGetContext(mcp, wsServer) {
         keys: z.array(z.string()).optional(),
       }),
     },
+    // Tool handler — forwards the request to the JS Agent via WebSocket
     async ({ keys }) => {
       log('info', TAG, 'get-context called', { keys });
+
+      // Validate that keys is an array (if provided)
       if (keys && !Array.isArray(keys)) {
         log('warn', TAG, 'Invalid keys parameter');
         return {
@@ -22,8 +40,12 @@ export function registerGetContext(mcp, wsServer) {
           isError: true,
         };
       }
+
       try {
+        // Send GET_CONTEXT command to the JS Agent
         const response = await wsServer.sendToAgent('GET_CONTEXT', { keys: keys || [] });
+
+        // If the agent reported an error, propagate it back
         if (response.error) {
           log('error', TAG, `Agent error: ${response.error.message}`);
           return {
@@ -34,17 +56,24 @@ export function registerGetContext(mcp, wsServer) {
             isError: true,
           };
         }
+
         log('info', TAG, 'get-context completed successfully');
+
+        // Serialize the result as pretty-printed JSON
         let result = JSON.stringify(response.result, null, 2);
+
+        // Truncate oversized responses to prevent memory issues
         if (result.length > MAX_RESPONSE_SIZE) {
           log('warn', TAG, `get-context result truncated: ${result.length} bytes exceeds ${MAX_RESPONSE_SIZE} limit`);
           result = result.slice(0, MAX_RESPONSE_SIZE);
           result += '\n\n[TRUNCATED: response exceeded 50KB limit]';
         }
+
         return {
           content: [{ type: 'text', text: result }],
         };
       } catch (err) {
+        // Catch-all for network failures, timeouts, or unexpected errors
         log('error', TAG, `Request failed: ${err.message}`);
         return {
           content: [{ type: 'text', text: `Error: ${err.message}` }],

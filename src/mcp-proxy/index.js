@@ -1,3 +1,14 @@
+/**
+ * MCP Proxy — Main Entry Point
+ *
+ * Bootstraps the MCP Proxy server, which consists of two components:
+ *  1. An MCP server (via Streamable HTTP transport on Express) for AI agents.
+ *  2. A WebSocket server for communicating with the browser-based JS Agent.
+ *
+ * The proxy forwards MCP tool calls from AI agents to the JS Agent through
+ * the WebSocket bridge, then returns the results back over HTTP.
+ */
+
 import express from 'express';
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js';
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js';
@@ -8,25 +19,40 @@ import { registerExecuteJs } from './tools/execute-js.js';
 import { registerGetContext } from './tools/get-context.js';
 import { registerUpdateAgent } from './tools/update-agent.js';
 
+// Logging tag used to identify MCP-Proxy-originated log entries
 const TAG = 'MCP-Proxy';
 
+/**
+ * Initialize and start the MCP Proxy server.
+ *
+ * Creates the WebSocket bridge, registers all MCP tools, sets up the Express
+ * HTTP server with the MCP endpoint, and configures graceful shutdown handlers.
+ *
+ * @returns {Promise<{wsServer, mcp, app, server}>} Objects for the running servers
+ */
 export async function startMcpProxy() {
   log('info', TAG, 'Starting MCP Proxy...');
+
+  // Create WebSocket server that bridges MCP tool calls to the JS Agent in the browser
   const wsServer = createWebSocketServer(WS_PORT);
   log('info', TAG, `WebSocket server listening on ws://localhost:${WS_PORT}`);
 
+  // Instantiate the MCP server with metadata
   const mcp = new McpServer({
     name: 'mcp-reverse-engineering-proxy',
     version: '0.1.0',
   });
   log('info', TAG, 'MCP Server instance created');
 
+  // Register all available MCP tools, wiring each one through the WebSocket bridge
   registerReadDom(mcp, wsServer);
   registerExecuteJs(mcp, wsServer);
   registerGetContext(mcp, wsServer);
   registerUpdateAgent(mcp, wsServer);
   log('info', TAG, 'All MCP tools registered');
 
+  // Create Streamable HTTP transport — the protocol layer between AI agent and MCP server
+  // Each session gets a unique UUID for stateful MCP interactions
   const transport = new StreamableHTTPServerTransport({
     sessionIdGenerator: () => crypto.randomUUID(),
   });
@@ -34,9 +60,11 @@ export async function startMcpProxy() {
   await mcp.connect(transport);
   log('info', TAG, 'MCP transport connected');
 
+  // Set up Express application as the HTTP host for MCP transport
   const app = express();
   app.use(express.json());
 
+  // Primary MCP endpoint — handles all HTTP methods for MCP protocol messages
   app.all('/mcp', async (req, res) => {
     log('info', TAG, `MCP request: ${req.method} /mcp`);
     try {
@@ -47,6 +75,7 @@ export async function startMcpProxy() {
     }
   });
 
+  // Health-check endpoint exposing server status and connected JS Agent count
   app.get('/health', (_req, res) => {
     res.json({
       status: 'ok',
@@ -55,11 +84,15 @@ export async function startMcpProxy() {
     });
   });
 
+  // Start listening for incoming HTTP requests
   const server = app.listen(EXPRESS_PORT, () => {
     log('info', TAG, `MCP server listening on http://localhost:${EXPRESS_PORT}/mcp`);
     log('info', TAG, `Health check: http://localhost:${EXPRESS_PORT}/health`);
   });
 
+  // --- Graceful shutdown handler ---
+  // Closes WebSocket and HTTP servers, flushes logs, then exits.
+  // Falls back to forced shutdown if graceful close takes longer than 5 seconds.
   function gracefulShutdown(signal) {
     log('info', TAG, `Received ${signal}. Shutting down gracefully...`);
     wsServer.close();
@@ -69,6 +102,7 @@ export async function startMcpProxy() {
         process.exit(0);
       });
     });
+    // Force exit after 5s to avoid hanging
     setTimeout(() => {
       log('error', TAG, 'Forced shutdown');
       flushLogStream(() => {
@@ -77,6 +111,7 @@ export async function startMcpProxy() {
     }, 5000);
   }
 
+  // Log and exit on uncaught exceptions to prevent silent corruption
   process.on('uncaughtException', (err) => {
     log('error', TAG, `Uncaught Exception: ${err.message}`);
     log('error', TAG, err.stack || 'No stack trace');
@@ -85,16 +120,19 @@ export async function startMcpProxy() {
     });
   });
 
+  // Log unhandled promise rejections (non-fatal — server keeps running)
   process.on('unhandledRejection', (reason) => {
     log('error', TAG, `Unhandled Rejection: ${reason}`);
   });
 
+  // Register signal handlers for graceful termination
   process.on('SIGINT', () => gracefulShutdown('SIGINT'));
   process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
   return { wsServer, mcp, app, server };
 }
 
+// Auto-start when this file is executed directly (not imported as a module)
 if (process.argv[1] && process.argv[1].endsWith('index.js')) {
   startMcpProxy().catch((err) => log('error', TAG, `Fatal: ${err.message}`));
 }
