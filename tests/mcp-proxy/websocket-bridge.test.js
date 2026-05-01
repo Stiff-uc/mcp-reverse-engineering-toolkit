@@ -38,14 +38,16 @@ describe('websocket-bridge', () => {
     wsServer.close();
   });
 
-  it('should send request and receive response from agent', (done) => {
+  it('should send request and receive response from agent', async () => {
     const port = 11900 + Math.floor(Math.random() * 1000);
     const wsServer = createWebSocketServer(port);
     const ws = new WebSocket(`ws://localhost:${port}`);
 
-    ws.on('open', async () => {
-      const promise = wsServer.sendToAgent('READ_DOM', { selector: 'body' });
+    await new Promise((resolve) => ws.on('open', resolve));
 
+    const promise = wsServer.sendToAgent('READ_DOM', { selector: 'body' });
+
+    await new Promise((resolve) => {
       ws.on('message', (raw) => {
         const msg = JSON.parse(raw.toString());
         expect(msg.type).toBe('request');
@@ -59,25 +61,27 @@ describe('websocket-bridge', () => {
           result: '<body>test</body>',
           error: null,
         }));
+        resolve();
       });
-
-      const response = await promise;
-      expect(response.result).toBe('<body>test</body>');
-      expect(response.error).toBeNull();
-      ws.close();
-      wsServer.close();
-      done();
     });
+
+    const response = await promise;
+    expect(response.result).toBe('<body>test</body>');
+    expect(response.error).toBeNull();
+    ws.close();
+    wsServer.close();
   });
 
-  it('should handle error responses from agent', (done) => {
+  it('should handle error responses from agent', async () => {
     const port = 11900 + Math.floor(Math.random() * 1000);
     const wsServer = createWebSocketServer(port);
     const ws = new WebSocket(`ws://localhost:${port}`);
 
-    ws.on('open', async () => {
-      const promise = wsServer.sendToAgent('EXECUTE_JS', { code: 'bad' });
+    await new Promise((resolve) => ws.on('open', resolve));
 
+    const promise = wsServer.sendToAgent('EXECUTE_JS', { code: 'bad' });
+
+    await new Promise((resolve) => {
       ws.on('message', (raw) => {
         const msg = JSON.parse(raw.toString());
         ws.send(JSON.stringify({
@@ -86,27 +90,26 @@ describe('websocket-bridge', () => {
           result: null,
           error: { message: 'SyntaxError', stack: 'line 1' },
         }));
+        resolve();
       });
-
-      const response = await promise;
-      expect(response.result).toBeNull();
-      expect(response.error.message).toBe('SyntaxError');
-      ws.close();
-      wsServer.close();
-      done();
     });
+
+    const response = await promise;
+    expect(response.result).toBeNull();
+    expect(response.error.message).toBe('SyntaxError');
+    ws.close();
+    wsServer.close();
   });
 
-  it('should timeout if no response received', (done) => {
+  it('should timeout if no response received', async () => {
     const port = 11900 + Math.floor(Math.random() * 1000);
     const wsServer = createWebSocketServer(port);
     const ws = new WebSocket(`ws://localhost:${port}`);
 
-    ws.on('open', async () => {
-      await expect(wsServer.sendToAgent('READ_DOM', {}, 100)).rejects.toThrow('timed out');
-      ws.close();
-      wsServer.close();
-      done();
-    });
+    await new Promise((resolve) => ws.on('open', resolve));
+
+    await expect(wsServer.sendToAgent('READ_DOM', {}, 100)).rejects.toThrow('timed out');
+    ws.close();
+    wsServer.close();
   });
 });

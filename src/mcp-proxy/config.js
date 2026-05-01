@@ -9,6 +9,7 @@ const LOG_FILE = join(LOG_DIR, 'mcp-proxy.log');
 const EXPRESS_PORT = parseInt(process.env.EXPRESS_PORT, 10) || 3100;
 const WS_PORT = parseInt(process.env.WS_PORT, 10) || 3101;
 const LOG_LEVEL = process.env.LOG_LEVEL || 'info';
+const MAX_RESPONSE_SIZE = 50 * 1024; // 50KB limit for MCP responses
 
 if (!existsSync(LOG_DIR)) {
   mkdirSync(LOG_DIR, { recursive: true });
@@ -32,4 +33,4 @@ function flushLogStream(callback) {
   logStream.end(callback);
 }
 
-export { EXPRESS_PORT, WS_PORT, LOG_LEVEL, LOG_FILE, log, flushLogStream };
+export { EXPRESS_PORT, WS_PORT, LOG_LEVEL, LOG_FILE, MAX_RESPONSE_SIZE, log, flushLogStream };
