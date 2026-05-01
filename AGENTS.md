@@ -22,6 +22,8 @@ The project has **two modes** that define what the AI agent can and cannot do.
 - Run `npm test` after changes
 - After changes in `src/js-agent/`, rebuild the bundle: `npm run build:agent`
 - Follow Code Style (Section 5)
+- Always increase js-agent minor version after implementing a change
+- Do not use emoji in documents and code comments
 
 ### 1.2. Study Mode
 
@@ -161,6 +163,7 @@ mcp-reverse-engineering-toolkit/
   - Classes: UpperCamelCase
 - **Line length:** No more than 100 characters
 - **Strict mode:** "use strict" (automatic via ESM)
+
 
 ---
 
