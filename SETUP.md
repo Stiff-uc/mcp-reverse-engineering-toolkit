@@ -178,9 +178,48 @@ Configure your AI agent to connect to the MCP Proxy as an MCP server. The endpoi
 http://localhost:3100/mcp
 ```
 
+### Pre-connection Checklist
+
+Before configuring your AI agent, verify that the MCP Proxy is ready to accept connections.
+
+1. **MCP Proxy is running** -- Ensure `npm start` is executing in a terminal window and you see the startup messages:
+
+   ```
+   MCP server listening on http://localhost:3100/mcp
+   WebSocket server listening on ws://localhost:3101
+   ```
+
+2. **Health endpoint responds** -- Open `http://localhost:3100/health` in your browser. The response should be:
+
+   ```json
+   { "status": "ok", "wsClients": 1, "version": "0.1.0" }
+   ```
+
+3. **JS Agent is connected** -- Confirm that `wsClients` is greater than `0`. A value of `0` means no browser tab has injected the JS Agent yet. See [Injecting JS Agent into Your Browser](#injecting-js-agent-into-your-browser).
+
 ### VS Code with Roo / Kilo
 
-Add the following to your MCP settings:
+Roo and Kilo support MCP servers through the VS Code settings interface.
+
+#### Step 1: Open MCP Settings
+
+1. Open **File** > **Preferences** > **Settings** (or press `Ctrl+,` on Windows/Linux, `Cmd+,` on macOS).
+2. In the search bar at the top, type `mcp`.
+3. Scroll down to the **MCP Servers** section and click **Edit in settings.json**.
+
+#### Step 2: Locate the Settings File
+
+The settings file lives at the following path depending on your platform:
+
+| Platform | Path |
+|---|---|
+| Windows | `%APPDATA%\Code\User\settings.json` |
+| macOS | `~/Library/Application Support/Code/User/settings.json` |
+| Linux | `~/.config/Code/User/settings.json` |
+
+#### Step 3: Add the MCP Server Configuration
+
+Add the following JSON object inside the top-level `{}` of `settings.json`:
 
 ```json
 {
@@ -193,9 +232,50 @@ Add the following to your MCP settings:
 }
 ```
 
+**Field explanation:**
+
+| Field | Value | Description |
+|---|---|---|
+| `mcpServers` | (object) | Top-level key for MCP server definitions |
+| `mcp-reverse-engineering-toolkit` | (string) | Human-readable identifier for this server. You may change this to any name you prefer |
+| `type` | `"streamable-http"` | Transport protocol. Must match what MCP Proxy exposes |
+| `url` | `"http://localhost:3100/mcp"` | HTTP endpoint of the MCP Proxy. Change the port if you use a custom `EXPRESS_PORT` |
+
+#### Step 4: Save and Restart
+
+1. Save the file (`Ctrl+S` / `Cmd+S`).
+2. Reload the VS Code window: **Developer: Reload Window** from the command palette (`F1`), or simply restart VS Code.
+
+#### Step 5: Confirm Tools Loaded
+
+After reload, open the chat panel and check that the following tools appear in the available tools list:
+
+- `read-dom`
+- `execute-js`
+- `get-context`
+- `update-agent`
+
+If the tools do not appear, verify the configuration syntax and check the MCP Proxy logs at `logs/mcp-proxy.log`.
+
 ### Claude Desktop
 
-Add the following to `claude_desktop_config.json`:
+Claude Desktop uses a separate configuration file for MCP servers.
+
+#### Step 1: Locate the Configuration File
+
+The file `claude_desktop_config.json` lives at the following path depending on your platform:
+
+| Platform | Path |
+|---|---|
+| Windows | `%LOCALAPPDATA%\Claude\claude_desktop_config.json` |
+| macOS | `~/Library/Application Support/Claude/claude_desktop_config.json` |
+| Linux | `~/.config/Claude/claude_desktop_config.json` |
+
+If the file does not exist, create it.
+
+#### Step 2: Add the MCP Server Configuration
+
+Add the following JSON object inside the top-level `{}`:
 
 ```json
 {
@@ -208,16 +288,99 @@ Add the following to `claude_desktop_config.json`:
 }
 ```
 
-### Available MCP Tools
+**Field explanation:**
 
-Once connected, the AI agent has access to the following tools:
+| Field | Value | Description |
+|---|---|---|
+| `mcpServers` | (object) | Top-level key for MCP server definitions |
+| `mcp-reverse-engineering-toolkit` | (string) | Human-readable identifier for this server |
+| `transport` | `"streamable-http"` | Transport protocol. Note that Claude Desktop uses `transport` instead of `type` |
+| `url` | `"http://localhost:3100/mcp"` | HTTP endpoint of the MCP Proxy |
 
-| Tool | Description |
-|---|---|
-| `read-dom` | Read the page DOM, optionally filtered by CSS selector |
-| `execute-js` | Execute arbitrary JavaScript in the page context |
-| `get-context` | Retrieve data from the JS agent (URL, cookies, localStorage, etc.) |
-| `update-agent` | Update the JS agent code or retrieve its current version |
+#### Step 3: Restart Claude Desktop
+
+Fully quit and restart Claude Desktop for the configuration to take effect. On Windows, right-click the tray icon and select **Quit**. On macOS, use **Cmd+Q**.
+
+#### Step 4: Verify the Server Appears
+
+Open a new conversation in Claude Desktop and check that the MCP server is listed in the active servers section. The tools should be available for invocation.
+
+### Configuration Reference
+
+The following table describes all configuration fields used when connecting to MCP Proxy.
+
+| Field | Required | Default | Description |
+|---|---|---|---|
+| `type` / `transport` | Yes | -- | Transport protocol. Must be `"streamable-http"` for MCP Proxy. Note: VS Code uses `type`, Claude Desktop uses `transport` |
+| `url` | Yes | -- | Full HTTP URL to the MCP endpoint. Must include the `/mcp` path suffix |
+
+There are no optional fields for the basic connection. If you changed the default port via the `EXPRESS_PORT` environment variable, update the `url` to match your custom port. For example, if you set `EXPRESS_PORT=4000`, the URL becomes:
+
+```json
+{
+  "url": "http://localhost:4000/mcp"
+}
+```
+
+### Post-connection Verification
+
+After your AI agent connects to MCP Proxy, perform the following verification steps.
+
+1. **Check that tools are available** -- In your AI agent interface, request a list of available tools or attempt to invoke one. The tools should appear without errors.
+
+2. **Test with a simple tool call** -- Ask your AI agent to invoke `get-context` with no parameters. A successful response will return data from the JS Agent, such as the current page URL:
+
+   ```
+   Invoke get-context to check connectivity.
+   ```
+
+   Expected result: A JSON object containing the page context (URL, cookies, localStorage keys, etc.).
+
+3. **Verify DOM reading works** -- Ask your AI agent to invoke `read-dom` with no selector. The response should contain the HTML of the loaded page.
+
+If any tool call fails, proceed to the troubleshooting section below.
+
+### MCP-Specific Troubleshooting
+
+#### Wrong transport type
+
+**Symptom:** The AI agent reports that the MCP server rejected the connection or tools are not available.
+
+**Solution:**
+- For VS Code: Ensure the field is named `type` and set to `"streamable-http"`.
+- For Claude Desktop: Ensure the field is named `transport` and set to `"streamable-http"`.
+- Do not use `"stdio"` or `"sse"` -- MCP Proxy only supports `streamable-http`.
+
+#### Server not initialized
+
+**Symptom:** Tool calls fail with an error indicating the server is not ready.
+
+**Solution:**
+- Wait a few seconds after starting MCP Proxy before connecting. The server needs time to initialize.
+- Check `logs/mcp-proxy.log` for initialization errors.
+
+#### Connection refused
+
+**Symptom:** `ECONNREFUSED` or "could not connect to MCP server".
+
+**Solution:**
+- Verify MCP Proxy is running (`npm start` in a terminal).
+- Confirm the URL in your configuration matches the actual port. If you changed `EXPRESS_PORT`, update the `url` field.
+- Check that nothing is blocking `localhost:3100` (firewall, proxy settings).
+
+#### Logs for diagnosis
+
+All MCP Proxy activity is logged to `logs/mcp-proxy.log`. To diagnose connection issues:
+
+```bash
+# Windows
+type logs\mcp-proxy.log
+
+# Linux / macOS
+tail -f logs/mcp-proxy.log
+```
+
+Look for entries tagged with `MCP-Proxy` or `Tool:*` that correspond to the time of the failed tool call.
 
 ---
 
