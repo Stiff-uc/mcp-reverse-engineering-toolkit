@@ -18,8 +18,9 @@ import { registerReadDom } from './tools/read-dom.js';
 import { registerExecuteJs } from './tools/execute-js.js';
 import { registerGetContext } from './tools/get-context.js';
 import { registerUpdateAgent } from './tools/update-agent.js';
+import { registerExecuteJsExt } from './tools/execute-js-ext.js';
+import { registerGetContextExt } from './tools/get-context-ext.js';
 
-// Logging tag used to identify MCP-Proxy-originated log entries
 const TAG = 'MCP-Proxy';
 
 /**
@@ -37,28 +38,33 @@ export async function startMcpProxy() {
   const wsServer = createWebSocketServer(WS_PORT);
   log('info', TAG, `WebSocket server listening on ws://localhost:${WS_PORT}`);
 
-  // Instantiate the MCP server with metadata
-  const mcp = new McpServer({
-    name: 'mcp-reverse-engineering-proxy',
-    version: '0.1.0',
-  });
-  log('info', TAG, 'MCP Server instance created');
+  /** Check if the request body is an MCP initialize request */
+  function isInitializeRequest(body) {
+    return body && body.method === 'initialize';
+  }
 
-  // Register all available MCP tools, wiring each one through the WebSocket bridge
-  registerReadDom(mcp, wsServer);
-  registerExecuteJs(mcp, wsServer);
-  registerGetContext(mcp, wsServer);
-  registerUpdateAgent(mcp, wsServer);
-  log('info', TAG, 'All MCP tools registered');
+  /**
+   * Create a new McpServer instance with all tools registered.
+   * Each session needs its own McpServer because McpServer can only
+   * connect to one transport at a time.
+   */
+  function createMcpServer() {
+    const mcp = new McpServer({
+      name: 'mcp-reverse-engineering-proxy',
+      version: '0.1.0',
+    });
+    registerReadDom(mcp, wsServer);
+    registerExecuteJs(mcp, wsServer);
+    registerGetContext(mcp, wsServer);
+    registerUpdateAgent(mcp, wsServer);
+    registerExecuteJsExt(mcp, wsServer);
+    registerGetContextExt(mcp, wsServer);
+    return mcp;
+  }
 
-  // Create Streamable HTTP transport — the protocol layer between AI agent and MCP server
-  // Each session gets a unique UUID for stateful MCP interactions
-  const transport = new StreamableHTTPServerTransport({
-    sessionIdGenerator: () => crypto.randomUUID(),
-  });
-
-  await mcp.connect(transport);
-  log('info', TAG, 'MCP transport connected');
+  // Multi-session map stores { transport, mcp } per session
+  // Session ID is sent by the client in the 'mcp-session-id' header
+  const sessions = new Map();
 
   // Set up Express application as the HTTP host for MCP transport
   const app = express();
@@ -66,12 +72,87 @@ export async function startMcpProxy() {
 
   // Primary MCP endpoint — handles all HTTP methods for MCP protocol messages
   app.all('/mcp', async (req, res) => {
-    log('info', TAG, `MCP request: ${req.method} /mcp`);
+    const requestBody = req.body;
+    const sessionId = req.headers['mcp-session-id'];
+    log('info', TAG, `MCP request: ${req.method} /mcp`, {
+      sessionId,
+      method: requestBody?.method,
+    });
+
+    // Capture response body for error logging
+    const originalJson = res.json.bind(res);
+    res.json = (body) => {
+      if (res.statusCode >= 400) {
+        log('error', TAG, `MCP request error, status: ${res.statusCode}`, {
+          method: req.method,
+          sessionId,
+          requestMethod: requestBody?.method,
+          requestBody,
+          responseBody: body,
+        });
+      }
+      return originalJson(body);
+    };
+
     try {
-      await transport.handleRequest(req, res, req.body);
-      log('info', TAG, `MCP request handled, response status: ${res.statusCode}`);
+      // Case 1: Existing session — reuse its transport
+      if (sessionId && sessions.has(sessionId)) {
+        const session = sessions.get(sessionId);
+        await session.transport.handleRequest(req, res, requestBody);
+        log('info', TAG, `MCP request handled (existing session), status: ${res.statusCode}`);
+        return;
+      }
+
+      // Case 2: New session initialization
+      if (!sessionId && isInitializeRequest(requestBody)) {
+        const newTransport = new StreamableHTTPServerTransport({
+          sessionIdGenerator: () => crypto.randomUUID(),
+        });
+        const newMcp = createMcpServer();
+
+        // When session closes, remove it from the map
+        newTransport.onclose = () => {
+          if (newTransport.sessionId) {
+            log('info', TAG, `Session closed: ${newTransport.sessionId}`);
+            sessions.delete(newTransport.sessionId);
+          }
+        };
+
+        await newMcp.connect(newTransport);
+        await newTransport.handleRequest(req, res, requestBody);
+        log('info', TAG, `MCP initialize handled, status: ${res.statusCode}`);
+
+        // Store session after initialization (sessionId is set after first response)
+        if (newTransport.sessionId) {
+          sessions.set(newTransport.sessionId, { transport: newTransport, mcp: newMcp });
+          log('info', TAG, `New session created: ${newTransport.sessionId}`);
+        }
+        return;
+      }
+
+      // Case 3: Invalid — no session ID and not an initialize request
+      log('error', TAG, 'MCP request rejected: missing session and not initialize', {
+        method: req.method,
+        requestBody,
+      });
+      res.status(400).json({
+        jsonrpc: '2.0',
+        error: { code: -32600, message: 'Invalid request: missing session' },
+      });
     } catch (err) {
-      log('error', TAG, `MCP request failed: ${err.message}`);
+      log('error', TAG, `MCP request failed: ${err.message}`, {
+        error: err.message,
+        stack: err.stack || 'No stack trace',
+        method: req.method,
+        sessionId,
+        requestBody,
+      });
+      if (!res.headersSent) {
+        res.status(500).json({
+          jsonrpc: '2.0',
+          error: { code: -32603, message: err.message },
+        });
+      }
     }
   });
 
@@ -80,6 +161,7 @@ export async function startMcpProxy() {
     res.json({
       status: 'ok',
       wsClients: wsServer.getConnectedCount(),
+      mcpSessions: sessions.size,
       version: '0.1.0',
     });
   });
@@ -91,10 +173,18 @@ export async function startMcpProxy() {
   });
 
   // --- Graceful shutdown handler ---
-  // Closes WebSocket and HTTP servers, flushes logs, then exits.
+  // Closes all session transports, WebSocket and HTTP servers, flushes logs, then exits.
   // Falls back to forced shutdown if graceful close takes longer than 5 seconds.
   function gracefulShutdown(signal) {
     log('info', TAG, `Received ${signal}. Shutting down gracefully...`);
+
+    // Close all active session transports
+    for (const [sid, session] of sessions) {
+      log('info', TAG, `Closing session transport: ${sid}`);
+      session.transport.close();
+    }
+    sessions.clear();
+
     wsServer.close();
     server.close(() => {
       log('info', TAG, 'Server closed');
@@ -129,7 +219,7 @@ export async function startMcpProxy() {
   process.on('SIGINT', () => gracefulShutdown('SIGINT'));
   process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
 
-  return { wsServer, mcp, app, server };
+  return { wsServer, app, server };
 }
 
 // Auto-start when this file is executed directly (not imported as a module)

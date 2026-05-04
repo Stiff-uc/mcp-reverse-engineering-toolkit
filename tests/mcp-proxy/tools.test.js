@@ -1,8 +1,27 @@
 import { describe, it, expect, beforeEach } from 'vitest';
+import { writeFileSync, readFileSync, unlinkSync, existsSync, rmSync } from 'fs';
 import { WebSocketServer } from 'ws';
 import { WebSocket } from 'ws';
 
 const MAX_RESPONSE_SIZE = 50 * 1024;
+
+const TEST_FILE = 'test-temp-output.json';
+const TEST_INPUT_FILE = 'test-temp-input.js';
+
+const TEST_NESTED_FILE = 'test-nested/deep/dir/output.json';
+
+function cleanupTestFiles() {
+  if (existsSync(TEST_FILE)) {
+    unlinkSync(TEST_FILE);
+  }
+  if (existsSync(TEST_INPUT_FILE)) {
+    unlinkSync(TEST_INPUT_FILE);
+  }
+  if (existsSync(TEST_NESTED_FILE)) {
+    unlinkSync(TEST_NESTED_FILE);
+    rmSync('test-nested/deep/dir', { recursive: true });
+  }
+}
 
 function createMockMCP() {
   const tools = new Map();
@@ -294,5 +313,184 @@ describe('update-agent tool', () => {
     const result = await t.handler({ code: 123 });
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain('code must be a string');
+  });
+});
+
+// --- execute-js-ext ---
+describe('execute-js-ext tool', () => {
+  it('should execute code from file successfully', async () => {
+    writeFileSync(TEST_INPUT_FILE, 'return { test: 42 };', 'utf-8');
+    
+    const m = createMockMCP();
+    const { registerExecuteJsExt } = await import('../../src/mcp-proxy/tools/execute-js-ext.js');
+    registerExecuteJsExt(m, {
+      sendToAgent: async () => ({ result: { test: 42 }, error: null }),
+    });
+    const t = m.getTool('execute-js-ext');
+
+    const result = await t.handler({ filePath: TEST_INPUT_FILE });
+    expect(!result.isError).toBe(true);
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.success).toBe(true);
+    
+    cleanupTestFiles();
+  });
+
+  it('should reject empty filePath parameter', async () => {
+    const m = createMockMCP();
+    const { registerExecuteJsExt } = await import('../../src/mcp-proxy/tools/execute-js-ext.js');
+    registerExecuteJsExt(m, { sendToAgent: async () => ({}) });
+    const t = m.getTool('execute-js-ext');
+
+    const result = await t.handler({ filePath: '' });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('filePath parameter is required');
+  });
+
+  it('should return error when file not found', async () => {
+    const m = createMockMCP();
+    const { registerExecuteJsExt } = await import('../../src/mcp-proxy/tools/execute-js-ext.js');
+    registerExecuteJsExt(m, { sendToAgent: async () => ({}) });
+    const t = m.getTool('execute-js-ext');
+
+    const result = await t.handler({ filePath: 'nonexistent-file.js' });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('Error reading file');
+  });
+
+  it('should return execution error from agent', async () => {
+    writeFileSync(TEST_INPUT_FILE, 'throw new Error("fail");', 'utf-8');
+
+    const m = createMockMCP();
+    const { registerExecuteJsExt } = await import('../../src/mcp-proxy/tools/execute-js-ext.js');
+    registerExecuteJsExt(m, {
+      sendToAgent: async () => ({
+        result: null,
+        error: { message: 'ReferenceError: x is not defined', stack: 'at line 1' },
+      }),
+    });
+    const t = m.getTool('execute-js-ext');
+
+    const result = await t.handler({ filePath: TEST_INPUT_FILE });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('Execution error: ReferenceError');
+    
+    cleanupTestFiles();
+  });
+});
+
+// --- get-context-ext ---
+describe('get-context-ext tool', () => {
+  beforeEach(() => {
+    cleanupTestFiles();
+  });
+
+  it('should save result to file successfully', async () => {
+    const testData = { items: [1, 2, 3], name: 'test' };
+
+    const m = createMockMCP();
+    const { registerGetContextExt } = await import('../../src/mcp-proxy/tools/get-context-ext.js');
+    registerGetContextExt(m, {
+      sendToAgent: async () => ({ result: testData, error: null }),
+    });
+    const t = m.getTool('get-context-ext');
+
+    const result = await t.handler({ code: 'return data;', filePath: TEST_FILE });
+    expect(!result.isError).toBe(true);
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.success).toBe(true);
+    expect(parsed.filePath).toBe(TEST_FILE);
+    expect(parsed.bytesWritten).toBeGreaterThan(0);
+
+    // Verify file was created with correct content
+    expect(existsSync(TEST_FILE)).toBe(true);
+    const fileContent = JSON.parse(readFileSync(TEST_FILE, 'utf-8'));
+    expect(fileContent).toEqual(testData);
+
+    cleanupTestFiles();
+  });
+
+  it('should overwrite existing file content', async () => {
+    // Create file with initial content
+    writeFileSync(TEST_FILE, JSON.stringify({ old: 'data' }), 'utf-8');
+    expect(readFileSync(TEST_FILE, 'utf-8')).toContain('old');
+
+    const m = createMockMCP();
+    const { registerGetContextExt } = await import('../../src/mcp-proxy/tools/get-context-ext.js');
+    registerGetContextExt(m, {
+      sendToAgent: async () => ({ result: { new: 'data' }, error: null }),
+    });
+    const t = m.getTool('get-context-ext');
+
+    await t.handler({ code: 'return data;', filePath: TEST_FILE });
+
+    // Verify file was overwritten
+    const fileContent = JSON.parse(readFileSync(TEST_FILE, 'utf-8'));
+    expect(fileContent).toEqual({ new: 'data' });
+    expect(fileContent.old).toBeUndefined();
+
+    cleanupTestFiles();
+  });
+
+  it('should reject empty code parameter', async () => {
+    const m = createMockMCP();
+    const { registerGetContextExt } = await import('../../src/mcp-proxy/tools/get-context-ext.js');
+    registerGetContextExt(m, { sendToAgent: async () => ({}) });
+    const t = m.getTool('get-context-ext');
+
+    const result = await t.handler({ code: '', filePath: TEST_FILE });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('code parameter is required');
+  });
+
+  it('should reject empty filePath parameter', async () => {
+    const m = createMockMCP();
+    const { registerGetContextExt } = await import('../../src/mcp-proxy/tools/get-context-ext.js');
+    registerGetContextExt(m, { sendToAgent: async () => ({}) });
+    const t = m.getTool('get-context-ext');
+
+    const result = await t.handler({ code: 'return 1;', filePath: '' });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('filePath parameter is required');
+  });
+
+  it('should return execution error from agent', async () => {
+    const m = createMockMCP();
+    const { registerGetContextExt } = await import('../../src/mcp-proxy/tools/get-context-ext.js');
+    registerGetContextExt(m, {
+      sendToAgent: async () => ({
+        result: null,
+        error: { message: 'TypeError: cannot read', stack: 'at line 5' },
+      }),
+    });
+    const t = m.getTool('get-context-ext');
+
+    const result = await t.handler({ code: 'return x.y;', filePath: TEST_FILE });
+    expect(result.isError).toBe(true);
+    expect(result.content[0].text).toContain('Execution error: TypeError');
+  });
+
+  it('should create parent directories recursively before writing file', async () => {
+    const testData = { nested: true, value: 'deep' };
+
+    const m = createMockMCP();
+    const { registerGetContextExt } = await import('../../src/mcp-proxy/tools/get-context-ext.js');
+    registerGetContextExt(m, {
+      sendToAgent: async () => ({ result: testData, error: null }),
+    });
+    const t = m.getTool('get-context-ext');
+
+    const result = await t.handler({ code: 'return data;', filePath: TEST_NESTED_FILE });
+    expect(!result.isError).toBe(true);
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.success).toBe(true);
+    expect(parsed.filePath).toBe(TEST_NESTED_FILE);
+
+    // Verify file was created in the nested directory
+    expect(existsSync(TEST_NESTED_FILE)).toBe(true);
+    const fileContent = JSON.parse(readFileSync(TEST_NESTED_FILE, 'utf-8'));
+    expect(fileContent).toEqual(testData);
+
+    cleanupTestFiles();
   });
 });

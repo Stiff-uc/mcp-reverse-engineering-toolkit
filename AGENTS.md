@@ -37,6 +37,16 @@ The project has **two modes** that define what the AI agent can and cannot do.
 
 **Full Study Mode workflow, MCP tools description, research techniques, and best practices are documented in [research-technics.md](research-technics.md).**
 
+### 1.3. Starting Research — Mandatory Checklist
+
+Before starting any research task, the AI agent **MUST** complete these steps in order:
+
+1. **Read `research-technics.md`** — This document contains the full workflow, MCP tools description, and best practices. Always read it before starting research to ensure up-to-date knowledge.
+2. **Check existing research README** — If the research project name is known (e.g., `chat-export`), check for `study/<project-name>/README.md` and read it. This file contains project-specific notes, discovered patterns, and lessons learned from previous sessions.
+3. **List study directory contents** — Use `list_files` on `study/<project-name>/` to understand what artifacts already exist (scripts, snapshots, notes, results).
+
+**Failure to read `research-technics.md` before starting research is a protocol violation.**
+
 ---
 
 ## 2. Architecture
@@ -70,6 +80,14 @@ MCP server with Streamable HTTP transport + built-in WebSocket server.
 | `execute-js` | Execute arbitrary JS in page context |
 | `get-context` | Get data from JS agent (URL, cookies, localStorage, etc.) |
 | `update-agent` | Update JS agent code (self-update) or get version |
+| `execute-js-ext` | Read JS code from a file and execute it in the browser |
+| `get-context-ext` | Execute JS in browser and save result to a file |
+
+**File-based tools usage rules (Study Mode):**
+- Use `execute-js-ext` when the JavaScript code to execute is too large to pass inline (e.g., complex data loaders or scrapers). Create the JS file in `study/<project-name>/` and pass its path.
+- Use `get-context-ext` when the data extracted from the website is too large to return through the chat. The tool will overwrite the target file each time.
+- When using `get-context-ext`, always generate a unique file path containing a timestamp to avoid overwriting previous extractions. Use the pattern: `study/<project-name>/data/<description>_<YYYYMMDD_HHMMSS>.json`
+- The file passed to `get-context-ext` is always overwritten (not appended). This prevents data mixing from previous extractions.
 
 **Logging system:**
 - All logs are written to console and to `logs/mcp-proxy.log`
@@ -125,7 +143,9 @@ mcp-reverse-engineering-toolkit/
 │   │       ├── read-dom.js
 │   │       ├── execute-js.js
 │   │       ├── get-context.js
-│   │       └── update-agent.js
+│   │       ├── update-agent.js
+│   │       ├── execute-js-ext.js
+│   │       └── get-context-ext.js
 │   └── js-agent/           # JS Agent sources (ES modules)
 │       ├── index.js
 │       ├── connection.js

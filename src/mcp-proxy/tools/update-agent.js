@@ -23,10 +23,23 @@ export function registerUpdateAgent(mcp, wsServer) {
   mcp.registerTool(
     'update-agent',
     {
-      description: 'Update the JS Agent code or get its current version',
+      description:
+        'Update the JS Agent code running in the browser, or get its current version. ' +
+        'When called with new code, the JS Agent evaluates and replaces itself with the ' +
+        'provided source. When called without code, it returns the current agent version. ' +
+        'Use this tool to deploy hotfixes or upgrades to the browser agent without reloading.',
       inputSchema: z.object({
-        code: z.string().optional(),
+        code: z.string().optional().describe(
+          'New JavaScript source code for the JS Agent. ' +
+          'If provided, the agent will be updated with this code. ' +
+          'If not provided, returns the current agent version.'
+        ),
       }),
+      annotations: {
+        title: 'Update Agent',
+        readOnlyHint: false,
+        idempotentHint: true,
+      },
     },
     // Tool handler — forwards the request to the JS Agent via WebSocket
     async ({ code }) => {

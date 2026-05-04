@@ -24,9 +24,12 @@ function mockDom(html) {
     location: { href: 'https://test.example.com' }
   };
 
-  globalThis.navigator = {
-    userAgent: 'TestBrowser/1.0'
-  };
+  Object.defineProperty(globalThis, 'navigator', {
+    value: { userAgent: 'TestBrowser/1.0' },
+    writable: true,
+    configurable: true,
+    enumerable: true
+  });
 
   globalThis.localStorage = {
     length: 1,
@@ -38,8 +41,10 @@ function mockDom(html) {
 function cleanupDom() {
   delete globalThis.document;
   delete globalThis.window;
-  delete globalThis.navigator;
   delete globalThis.localStorage;
+  if (Object.getOwnPropertyDescriptor(globalThis, 'navigator')?.configurable) {
+    delete globalThis.navigator;
+  }
 }
 
 describe('command-handler (Node-safe tests)', () => {

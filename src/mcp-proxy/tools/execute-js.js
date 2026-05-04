@@ -24,11 +24,27 @@ export function registerExecuteJs(mcp, wsServer) {
   mcp.registerTool(
     'execute-js',
     {
-      description: 'Execute arbitrary JavaScript in the browser context and return the result',
+      description:
+        'Execute arbitrary JavaScript code inside the browser context of the JS Agent. ' +
+        'The code runs in the page runtime with full access to DOM, browser APIs, and any loaded scripts. ' +
+        'Results are JSON-serialized and returned. Use this tool for dynamic interactions, ' +
+        'data extraction, or manipulating the page state.',
       inputSchema: z.object({
-        code: z.string(),
-        timeout: z.number().optional(),
+        code: z.string().describe(
+          'JavaScript code to execute in the browser context. ' +
+          'The return value will be JSON-serialized. ' +
+          'Has full access to DOM, window, localStorage, and loaded scripts.'
+        ),
+        timeout: z.number().optional().describe(
+          'Maximum execution time in milliseconds before the script is terminated. ' +
+          'Default is 10000ms (10 seconds).'
+        ),
       }),
+      annotations: {
+        title: 'Execute JavaScript',
+        readOnlyHint: false,
+        idempotentHint: false,
+      },
     },
     // Tool handler — validates input then forwards to the JS Agent
     async ({ code, timeout }) => {

@@ -23,10 +23,23 @@ export function registerGetContext(mcp, wsServer) {
   mcp.registerTool(
     'get-context',
     {
-      description: 'Get context data from the JS Agent (URL, cookies, localStorage, etc.)',
+      description:
+        'Retrieve browser context data from the JS Agent running in the browser. ' +
+        'Returns information such as current URL, page title, cookies, user agent, ' +
+        'and localStorage contents. Use this tool to understand the current state ' +
+        'of the browser session.',
       inputSchema: z.object({
-        keys: z.array(z.string()).optional(),
+        keys: z.array(z.string()).optional().describe(
+          'Optional list of context keys to filter the response. ' +
+          'Available keys: url, title, cookies, userAgent, localStorage. ' +
+          'If not provided, all context data is returned.'
+        ),
       }),
+      annotations: {
+        title: 'Get Context',
+        readOnlyHint: true,
+        idempotentHint: true,
+      },
     },
     // Tool handler — forwards the request to the JS Agent via WebSocket
     async ({ keys }) => {

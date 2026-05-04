@@ -246,6 +246,18 @@ Save all found data, DOM snapshots, and scripts to `study/<project-name>/`.
 - **Do not mutate the page unless necessary** — if you only need to read data, do not change the DOM
 - **If the page must be modified** (e.g., remove a paywall) — do so consciously and inform the user
 - **Always anticipate errors** — check element existence before accessing
+- **CRITICAL: Never use bare `return` statements** — `execute-js` evaluates code as an expression, not a statement block. Using `return` outside of a function causes `SyntaxError: Illegal return statement`. Always use expressions instead:
+
+  ```
+  // WRONG — bare return causes SyntaxError
+  execute-js code="if (window.foo) { return window.foo; } else { return 'not found'; }"
+
+  // CORRECT — ternary expression
+  execute-js code="window.foo ? window.foo : 'not found'"
+
+  // CORRECT — IIFE with return inside function
+  execute-js code="(function() { if (window.foo) { return window.foo; } return 'not found'; })()"
+  ```
 
 ---
 
@@ -344,7 +356,30 @@ flowchart LR
 
 ---
 
-## 11. Quick Reference
+## 11. Debugging Browser Scripts via execute-js
+
+When a browser script (exporter, scraper, etc.) produces incorrect results, use this iterative isolation technique to debug without modifying the page.
+
+### 11.1. Technique Overview
+
+```mermaid
+flowchart LR
+    A[Identify Problem] --> B[Extract Sample Data via execute-js]
+    B --> C[Isolate Suspect Function]
+    C --> D[Test with Sample Data]
+    D --> E{Result Correct?}
+    E -->|No| F[Compare with Visual Inspection]
+    F --> G[Identify Root Cause]
+    G --> H[Fix in Source File]
+    H --> I[Re-test via execute-js]
+    I --> E
+    E -->|Yes| J[Verify on Multiple Samples]
+    J --> K[Deploy Full Script]
+```
+
+---
+
+## 12. Quick Reference
 
 | Task | Tool | Example |
 |------|------|---------|
@@ -354,6 +389,7 @@ flowchart LR
 | Check agent version | `update-agent` | `update-agent` |
 | View logs | CLI | `tail -20 logs/mcp-proxy.log` |
 | Health check | HTTP | `GET http://localhost:3100/health` |
+| Debug browser script | Section 11 | Isolate → Test → Fix → Verify |
 
 ---
 
