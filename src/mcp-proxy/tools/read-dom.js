@@ -26,11 +26,26 @@ export function registerReadDom(mcp, wsServer) {
   mcp.registerTool(
     'read-dom',
     {
-      description: 'Read DOM from the web page, optionally filtered by CSS selector',
+      description:
+        'Read the HTML DOM of the current web page loaded in the browser. ' +
+        'Returns the outerHTML of the page or specific elements matched by a CSS selector. ' +
+        'Use this tool to inspect the structure and content of web pages for analysis or scraping.',
       inputSchema: z.object({
-        selector: z.string().optional(),
-        timeout: z.number().optional(),
+        selector: z.string().optional().describe(
+          'Optional CSS selector to filter which elements to read. ' +
+          'If not provided, returns the full document HTML. ' +
+          'Example: "body", ".main-content", "#sidebar > ul li"'
+        ),
+        timeout: z.number().optional().describe(
+          'Maximum execution time in milliseconds before the request is terminated. ' +
+          'Default is 5000ms (5 seconds).'
+        ),
       }),
+      annotations: {
+        title: 'Read DOM',
+        readOnlyHint: true,
+        idempotentHint: true,
+      },
     },
     // Tool handler — forwards the request to the JS Agent via WebSocket
     async ({ selector, timeout }) => {

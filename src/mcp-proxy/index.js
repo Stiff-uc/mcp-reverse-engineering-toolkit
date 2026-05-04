@@ -18,6 +18,8 @@ import { registerReadDom } from './tools/read-dom.js';
 import { registerExecuteJs } from './tools/execute-js.js';
 import { registerGetContext } from './tools/get-context.js';
 import { registerUpdateAgent } from './tools/update-agent.js';
+import { registerExecuteJsExt } from './tools/execute-js-ext.js';
+import { registerGetContextExt } from './tools/get-context-ext.js';
 
 const TAG = 'MCP-Proxy';
 
@@ -55,6 +57,8 @@ export async function startMcpProxy() {
     registerExecuteJs(mcp, wsServer);
     registerGetContext(mcp, wsServer);
     registerUpdateAgent(mcp, wsServer);
+    registerExecuteJsExt(mcp, wsServer);
+    registerGetContextExt(mcp, wsServer);
     return mcp;
   }
 
