@@ -37,6 +37,16 @@ The project has **two modes** that define what the AI agent can and cannot do.
 
 **Full Study Mode workflow, MCP tools description, research techniques, and best practices are documented in [research-technics.md](research-technics.md).**
 
+### 1.3. Starting Research — Mandatory Checklist
+
+Before starting any research task, the AI agent **MUST** complete these steps in order:
+
+1. **Read `research-technics.md`** — This document contains the full workflow, MCP tools description, and best practices. Always read it before starting research to ensure up-to-date knowledge.
+2. **Check existing research README** — If the research project name is known (e.g., `chat-export`), check for `study/<project-name>/README.md` and read it. This file contains project-specific notes, discovered patterns, and lessons learned from previous sessions.
+3. **List study directory contents** — Use `list_files` on `study/<project-name>/` to understand what artifacts already exist (scripts, snapshots, notes, results).
+
+**Failure to read `research-technics.md` before starting research is a protocol violation.**
+
 ---
 
 ## 2. Architecture

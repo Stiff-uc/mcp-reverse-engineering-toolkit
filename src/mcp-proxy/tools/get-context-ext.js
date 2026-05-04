@@ -7,7 +7,8 @@
  * The file is overwritten each time to avoid mixing with previous data.
  */
 
-import { writeFileSync } from 'fs';
+import { writeFileSync, mkdirSync } from 'fs';
+import { dirname } from 'path';
 import { z } from 'zod';
 import { log } from '../config.js';
 
@@ -93,6 +94,12 @@ export function registerGetContextExt(mcp, wsServer) {
 
         // Serialize result to JSON string
         const content = JSON.stringify(response.result, null, 2);
+
+        // Create parent directory recursively if it doesn't exist
+        const dir = dirname(filePath);
+        if (dir && dir !== '.') {
+          mkdirSync(dir, { recursive: true });
+        }
 
         // Write to file (overwrites existing content)
         try {

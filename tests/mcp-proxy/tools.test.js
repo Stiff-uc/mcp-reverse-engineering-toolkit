@@ -1,5 +1,5 @@
 import { describe, it, expect, beforeEach } from 'vitest';
-import { writeFileSync, readFileSync, unlinkSync, existsSync } from 'fs';
+import { writeFileSync, readFileSync, unlinkSync, existsSync, rmSync } from 'fs';
 import { WebSocketServer } from 'ws';
 import { WebSocket } from 'ws';
 
@@ -8,12 +8,18 @@ const MAX_RESPONSE_SIZE = 50 * 1024;
 const TEST_FILE = 'test-temp-output.json';
 const TEST_INPUT_FILE = 'test-temp-input.js';
 
+const TEST_NESTED_FILE = 'test-nested/deep/dir/output.json';
+
 function cleanupTestFiles() {
   if (existsSync(TEST_FILE)) {
     unlinkSync(TEST_FILE);
   }
   if (existsSync(TEST_INPUT_FILE)) {
     unlinkSync(TEST_INPUT_FILE);
+  }
+  if (existsSync(TEST_NESTED_FILE)) {
+    unlinkSync(TEST_NESTED_FILE);
+    rmSync('test-nested/deep/dir', { recursive: true });
   }
 }
 
@@ -462,5 +468,29 @@ describe('get-context-ext tool', () => {
     const result = await t.handler({ code: 'return x.y;', filePath: TEST_FILE });
     expect(result.isError).toBe(true);
     expect(result.content[0].text).toContain('Execution error: TypeError');
+  });
+
+  it('should create parent directories recursively before writing file', async () => {
+    const testData = { nested: true, value: 'deep' };
+
+    const m = createMockMCP();
+    const { registerGetContextExt } = await import('../../src/mcp-proxy/tools/get-context-ext.js');
+    registerGetContextExt(m, {
+      sendToAgent: async () => ({ result: testData, error: null }),
+    });
+    const t = m.getTool('get-context-ext');
+
+    const result = await t.handler({ code: 'return data;', filePath: TEST_NESTED_FILE });
+    expect(!result.isError).toBe(true);
+    const parsed = JSON.parse(result.content[0].text);
+    expect(parsed.success).toBe(true);
+    expect(parsed.filePath).toBe(TEST_NESTED_FILE);
+
+    // Verify file was created in the nested directory
+    expect(existsSync(TEST_NESTED_FILE)).toBe(true);
+    const fileContent = JSON.parse(readFileSync(TEST_NESTED_FILE, 'utf-8'));
+    expect(fileContent).toEqual(testData);
+
+    cleanupTestFiles();
   });
 });

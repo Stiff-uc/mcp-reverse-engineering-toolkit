@@ -246,6 +246,18 @@ Save all found data, DOM snapshots, and scripts to `study/<project-name>/`.
 - **Do not mutate the page unless necessary** — if you only need to read data, do not change the DOM
 - **If the page must be modified** (e.g., remove a paywall) — do so consciously and inform the user
 - **Always anticipate errors** — check element existence before accessing
+- **CRITICAL: Never use bare `return` statements** — `execute-js` evaluates code as an expression, not a statement block. Using `return` outside of a function causes `SyntaxError: Illegal return statement`. Always use expressions instead:
+
+  ```
+  // WRONG — bare return causes SyntaxError
+  execute-js code="if (window.foo) { return window.foo; } else { return 'not found'; }"
+
+  // CORRECT — ternary expression
+  execute-js code="window.foo ? window.foo : 'not found'"
+
+  // CORRECT — IIFE with return inside function
+  execute-js code="(function() { if (window.foo) { return window.foo; } return 'not found'; })()"
+  ```
 
 ---
 
