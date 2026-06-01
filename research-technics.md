@@ -18,11 +18,13 @@ This document contains the complete workflow, tools, and best practices for cond
 
 ## 2. Starting Research
 
-When asked to research a website, the AI agent must:
+When asked to research a website, the AI agent should:
 
-1. **Ensure MCP Proxy is running** — Execute `GET http://localhost:3100/health` (via webfetch or curl). Expected response: `{ "status": "ok", "wsClients": <number>, "version": "0.1.0" }`. If the server does not respond, ask the user to open a terminal, navigate to the project folder, and run `npm start`.
-2. **Ensure JS Agent is connected** — Check that `wsClients > 0` in the health response. If `wsClients === 0`, ask the user to open the browser console (F12) on the target site, copy the code from `dist/js-agent-bundle.js`, and paste it into the console.
-3. **Create a research folder** — `study/<project-name>/` (name based on URL: `study/example-com/` for `https://example.com`).
+1. **Use MCP tools directly** — Begin with `get-context`, `read-dom`, or `execute-js`. If all tools respond normally, the MCP Proxy and JS Agent are operational.
+2. **If tools return connection errors** — Check `http://localhost:3100/health` (expected response: `{ "status": "ok", "wsClients": <number>, "version": "..." }`).
+   - If the server does not respond, ask the user to open a terminal, navigate to the project folder, and run `npm start`.
+   - If `wsClients === 0`, ask the user to open the browser console (F12) on the target site, copy the code from `dist/js-agent-bundle.js`, and paste it into the console.
+3. **Create the research folder** — `study/<project-name>/` only if it does not already exist (name based on URL).
 4. **Begin data collection** via MCP tools, following the steps below.
 
 ---
@@ -196,6 +198,51 @@ update-agent code="(function() { /* new agent code */ })()"
 
 ---
 
+### 5.5. execute-js-ext (filePath: string, timeout?: number)
+
+Reads JavaScript code from a local file and executes it in the page context.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|:---:|:---:|-------------|
+| filePath | string | yes | — | Absolute path to the `.js` file |
+| timeout | number | no | 30000 | Maximum wait time (ms) |
+
+**Study Mode example:**
+
+```
+execute-js-ext filePath="study/example-com/browser-scripts/extract-data.js"
+```
+
+Use this tool when the script is too large to pass inline via `execute-js` (e.g., complex scrapers or data loaders).
+
+**Returns:** JSON representation of the execution result, same as `execute-js`.
+
+---
+
+### 5.6. get-context-ext (code: string, filePath: string, timeout?: number)
+
+Executes JavaScript in the page context and saves the serialized result to a file.
+
+| Parameter | Type | Required | Default | Description |
+|-----------|------|:---:|:---:|-------------|
+| code | string | yes | — | JavaScript code to execute |
+| filePath | string | yes | — | Absolute path for the output file |
+| timeout | number | no | 30000 | Maximum wait time (ms) |
+
+**Study Mode example:**
+
+```
+get-context-ext code="JSON.stringify(window.__data)" filePath="study/example-com/data/chat_dump_20260506_101018.json"
+```
+
+**Important rules:**
+- The output file is **overwritten** on each call (not appended).
+- Use a unique file path with a timestamp to avoid losing previous extractions: `study/<project-name>/data/<description>_<YYYYMMDD_HHMMSS>.json`
+
+**Returns:** Confirmation with the path to the saved file.
+
+---
+
 ## 6. Standard Research Procedure
 
 When researching a new site, the AI agent must follow this protocol:
@@ -257,7 +304,7 @@ Save all found data, DOM snapshots, and scripts to `study/<project-name>/`.
 
   // CORRECT — IIFE with return inside function
   execute-js code="(function() { if (window.foo) { return window.foo; } return 'not found'; })()"
-  ```
+```
 
 ---
 
@@ -301,6 +348,8 @@ mindmap
       dom-snapshots
         01-initial.html
         02-after-click.html
+      browser-scripts
+        extract-data.js
       scripts
         extract-data.js
       notes
@@ -308,6 +357,8 @@ mindmap
       results
         extracted-data.json
 ```
+
+**Naming recommendation:** Use `browser-scripts/` for scripts intended to run inside the browser (via `execute-js-ext`). Use `scripts/` for local Node.js or shell utilities.
 
 ---
 

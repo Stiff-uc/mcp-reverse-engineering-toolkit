@@ -23,7 +23,7 @@ The project has **two modes** that define what the AI agent can and cannot do.
 - After changes in `src/js-agent/`, rebuild the bundle: `npm run build:agent`
 - Follow Code Style (Section 5)
 - Always increase js-agent minor version after implementing a change
-- Do not use emoji in documents and code comments
+- Do not use emoji in documents
 
 ### 1.2. Study Mode
 
@@ -32,6 +32,8 @@ The project has **two modes** that define what the AI agent can and cannot do.
 **Forbidden:**
 - Modify any files in `src/`, `tests/`, `scripts/`
 - Modify root config files: `package.json`, `AGENTS.md`, `.gitignore`
+
+**Exception:** `research-technics.md` may be edited in Study Mode to document new techniques and improve the research workflow.
 
 **Exception:** If research reveals a need to improve the core framework, file it as a separate Core Development task.
 
